@@ -8,8 +8,16 @@ CREATE TABLE IF NOT EXISTS accounts (
     two_factor_secret TEXT,
     two_factor_recovery_codes TEXT,
     two_factor_confirmed_at TIMESTAMP,
+    remember_token VARCHAR(100),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_accounts_login_username_lower ON accounts ((lower(login_username)));
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    email TEXT NOT NULL,
+    token TEXT NOT NULL,
+    created_at TIMESTAMP,
+    PRIMARY KEY (email)
+);
