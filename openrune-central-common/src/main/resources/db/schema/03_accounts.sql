@@ -21,3 +21,15 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
     created_at TIMESTAMP,
     PRIMARY KEY (email)
 );
+
+CREATE TABLE IF NOT EXISTS laravel_sessions (
+    id VARCHAR(255) PRIMARY KEY,
+    user_id BIGINT,
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    payload TEXT NOT NULL,
+    last_activity INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_laravel_sessions_user_id ON laravel_sessions (user_id);
+CREATE INDEX IF NOT EXISTS idx_laravel_sessions_last_activity ON laravel_sessions (last_activity);
