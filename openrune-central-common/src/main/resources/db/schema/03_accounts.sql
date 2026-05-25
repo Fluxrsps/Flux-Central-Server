@@ -3,6 +3,11 @@ CREATE TABLE IF NOT EXISTS accounts (
     login_username TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     rights TEXT NOT NULL DEFAULT '',
+    email TEXT UNIQUE,
+    email_verified_at TIMESTAMP,
+    two_factor_secret TEXT,
+    two_factor_recovery_codes TEXT,
+    two_factor_confirmed_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
