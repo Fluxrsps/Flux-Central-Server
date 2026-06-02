@@ -12,9 +12,9 @@ plugins {
 
 val hostingDirectory: File =
     System.getenv("HOSTING_DIRECTORY")?.let { File(it) }
-        ?: File("D:\\OpenRune\\openrune-hosting")
+        ?: File("D:\\RSPS\\Fluxious\\hosting")
 
-val buildNumber = System.getenv("BUILD_NUMBER") ?: "1.0"
+val buildNumber = "flux-1.0"
 
 subprojects {
     repositories {

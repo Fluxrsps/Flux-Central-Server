@@ -34,12 +34,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { cn } from "@/lib/utils";
 
 const PAGE = 25;
-const RIGHTS_PRESETS = [
-  "modlevel.player",
-  "modlevel.moderator",
-  "modlevel.admin",
-  "modlevel.owner",
-] as const;
+const RIGHTS_LEVEL_OPTIONS: { level: number; label: string }[] = [
+  { level: 0, label: "None (player)" },
+  { level: 1, label: "Moderator" },
+  { level: 2, label: "Admin" },
+  { level: 3, label: "Developer" },
+  { level: 4, label: "Manager (owner)" },
+];
 
 type AccountRow = Record<string, unknown>;
 
@@ -61,7 +62,7 @@ export function AccountsTab({ db }: { db: BridgeDb }) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<AccountRow | null>(null);
-  const [rightsEdit, setRightsEdit] = useState("");
+  const [rightsEdit, setRightsEdit] = useState("0");
   const [sessionsRes, setSessionsRes] = useState<QueryResultPayload | null>(null);
   const [charsRes, setCharsRes] = useState<QueryResultPayload | null>(null);
   const [charsNote, setCharsNote] = useState<string | null>(null);
@@ -82,13 +83,9 @@ export function AccountsTab({ db }: { db: BridgeDb }) {
   const [pApproved, setPApproved] = useState("");
   const [punishBusy, setPunishBusy] = useState(false);
   const [punishInfo, setPunishInfo] = useState<string | null>(null);
-  const rightsOptions = useMemo(() => {
-    const s = new Set<string>(RIGHTS_PRESETS);
-    const current = rightsEdit.trim();
-    if (current.length > 0) {
-      s.add(current);
-    }
-    return [...s];
+  const rightsLevel = useMemo(() => {
+    const n = Number(rightsEdit);
+    return Number.isFinite(n) ? Math.trunc(n) : 0;
   }, [rightsEdit]);
 
   const accountCharacters = useMemo(() => {
@@ -163,7 +160,7 @@ export function AccountsTab({ db }: { db: BridgeDb }) {
       const acc = await db.query(ACCOUNT_BY_ID, [id]);
       const row = acc.rows[0] ?? null;
       setDetail(row);
-      setRightsEdit(String(row?.rights ?? "modlevel.player"));
+      setRightsEdit(String(row?.rights ?? 0));
       try {
         const se = await db.query(ACCOUNT_SESSIONS, [id]);
         setSessionsRes({
@@ -293,7 +290,7 @@ export function AccountsTab({ db }: { db: BridgeDb }) {
     setErr(null);
     setSaveInfo(null);
     try {
-      await db.query(`UPDATE accounts SET rights = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, [rightsEdit, selectedId]);
+      await db.query(`UPDATE accounts SET rights = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, [rightsLevel, selectedId]);
       setSaveInfo("Saved.");
       await loadList();
       await loadDetail(selectedId);
@@ -415,9 +412,9 @@ export function AccountsTab({ db }: { db: BridgeDb }) {
                           <SelectValue placeholder="Select rights" />
                         </SelectTrigger>
                         <SelectContent>
-                          {rightsOptions.map((v) => (
-                            <SelectItem key={v} value={v}>
-                              {v}
+                          {RIGHTS_LEVEL_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.level} value={String(opt.level)}>
+                              {opt.label} (level {opt.level})
                             </SelectItem>
                           ))}
                         </SelectContent>

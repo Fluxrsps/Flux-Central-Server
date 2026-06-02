@@ -2,6 +2,8 @@ SELECT
     a.id AS account_id,
     a.login_username,
     a.rights,
+    c.donator_rank,
+    c.game_mode,
     c.display_name,
     c.email,
     c.members,
