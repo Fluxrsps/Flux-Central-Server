@@ -2,6 +2,7 @@ package dev.or2.central
 
 import dev.or2.central.http.world.WorldListCache
 import dev.or2.central.server.net.codec.writeServerBroadcast
+import dev.or2.central.server.net.codec.writeServerDisplayNameSync
 import dev.or2.central.server.net.codec.writeServerKick
 import dev.or2.central.server.net.codec.writeServerMuteUpdate
 import dev.or2.central.server.net.codec.writeServerRebootSchedule
@@ -80,6 +81,7 @@ class PostgresEventListenerService(
             st.addBatch("LISTEN character_mute_events")
             st.addBatch("LISTEN world_reboot_events")
             st.addBatch("LISTEN world_broadcast_events")
+            st.addBatch("LISTEN character_display_name_events")
             st.executeBatch()
         }
 
@@ -103,6 +105,7 @@ class PostgresEventListenerService(
                         "character_mute_events" -> handleMute(n.parameter)
                         "world_reboot_events" -> handleReboot(n.parameter)
                         "world_broadcast_events" -> handleBroadcast(n.parameter)
+                        "character_display_name_events" -> handleDisplayName(n.parameter)
                     }
                 }
 
@@ -230,5 +233,22 @@ class PostgresEventListenerService(
         val frame = writeServerBroadcast(scope, message, url, icon)
 
         flush(if (worldId != null) listOf(worldId) else emptyList(), frame, broadcastAll = worldId == null)
+    }
+
+    private fun handleDisplayName(raw: String?) {
+        val root = parseObject(raw) ?: return
+
+        val accountId = root.long("account_id") ?: return
+        val characterId = root.int("character_id") ?: return
+        val displayName = root.string("display_name")
+        val previousDisplayName = root.string("previous_display_name")
+
+        runCatching {
+            val worlds = sessionRepository.findDistinctWorldIdsByAccount(accountId)
+            val frame = writeServerDisplayNameSync(accountId, characterId, displayName, previousDisplayName)
+            flush(worlds, frame, broadcastAll = true)
+        }.onFailure {
+            log.warn("Display name push failed for account {}", accountId, it)
+        }
     }
 }

@@ -9,11 +9,16 @@ import {
   ACCOUNTS_COUNT_SEARCH,
   ACCOUNTS_LIST_PAGE,
   ACCOUNTS_SEARCH_PAGE,
+  CHARACTER_DISPLAY_NAME_APPLY,
+  CHARACTER_DISPLAY_NAME_CONTEXT,
+  DISPLAY_NAME_TAKEN_AS_OTHER_LOGIN,
+  DISPLAY_NAME_TAKEN_BY_OTHER_CHARACTER,
   escapeLike,
   PUNISHMENT_INSERT,
   PUNISHMENTS_FOR_ACCOUNT,
   PUNISHMENT_UPDATE_STATUS,
 } from "./queries";
+import { validateStaffDisplayNameFormat } from "./displayNamePolicy";
 import { ResultTable } from "./ResultTable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -82,6 +87,10 @@ export function AccountsTab({ db }: { db: BridgeDb }) {
   const [pApproved, setPApproved] = useState("");
   const [punishBusy, setPunishBusy] = useState(false);
   const [punishInfo, setPunishInfo] = useState<string | null>(null);
+  const [renameCharId, setRenameCharId] = useState("");
+  const [renameInput, setRenameInput] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [renameInfo, setRenameInfo] = useState<string | null>(null);
   const rightsOptions = useMemo(() => {
     const s = new Set<string>(RIGHTS_PRESETS);
     const current = rightsEdit.trim();
@@ -111,6 +120,17 @@ export function AccountsTab({ db }: { db: BridgeDb }) {
       setPSelectedCharacterId(ids[0] ?? "");
     }
   }, [pScope, accountCharacters, pSelectedCharacterId]);
+
+  useEffect(() => {
+    if (accountCharacters.length === 0) {
+      setRenameCharId("");
+      return;
+    }
+    const ids = accountCharacters.map((r) => String(r.id));
+    if (!renameCharId || !ids.includes(renameCharId)) {
+      setRenameCharId(ids[0] ?? "");
+    }
+  }, [accountCharacters, renameCharId]);
 
   useEffect(() => {
     if (pKind !== "temp_ban" && pKind !== "temp_mute") {
@@ -151,6 +171,8 @@ export function AccountsTab({ db }: { db: BridgeDb }) {
     setPunishNote(null);
     setPunishRes(null);
     setPunishInfo(null);
+    setRenameInfo(null);
+    setRenameInput("");
     setSessionsNote(null);
     setErr(null);
     setDetail(null);
@@ -282,6 +304,61 @@ export function AccountsTab({ db }: { db: BridgeDb }) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setPunishBusy(false);
+    }
+  };
+
+  const applyCharacterDisplayName = async () => {
+    if (selectedId == null) {
+      return;
+    }
+    const cid = Number(renameCharId);
+    if (!Number.isFinite(cid) || cid <= 0) {
+      setErr("Select a character to rename.");
+      return;
+    }
+    const raw = renameInput;
+    setRenameBusy(true);
+    setErr(null);
+    setRenameInfo(null);
+    try {
+      const ctxRes = await db.query(CHARACTER_DISPLAY_NAME_CONTEXT, [cid, selectedId]);
+      const ctx = ctxRes.rows[0] as AccountRow | undefined;
+      if (!ctx) {
+        setErr("Character not found for this account.");
+        return;
+      }
+      const fmtRes = validateStaffDisplayNameFormat(raw, null);
+      if (!fmtRes.ok) {
+        setErr(fmtRes.message);
+        return;
+      }
+      const sanitized = fmtRes.sanitized;
+      const nowMs = Date.now();
+
+      const takenChar = await db.query(DISPLAY_NAME_TAKEN_BY_OTHER_CHARACTER, [sanitized, cid]);
+      if (takenChar.rows.length > 0) {
+        setErr("Another character already uses this display name.");
+        return;
+      }
+      const takenLogin = await db.query(DISPLAY_NAME_TAKEN_AS_OTHER_LOGIN, [sanitized, selectedId]);
+      if (takenLogin.rows.length > 0) {
+        setErr("Another account already uses this text as their login username (case-insensitive).");
+        return;
+      }
+
+      await db.query(CHARACTER_DISPLAY_NAME_APPLY, [cid, selectedId, sanitized, nowMs, true]);
+      setRenameInfo("Display name updated.");
+      setRenameInput("");
+      await loadDetail(selectedId);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("duplicate key") || msg.includes("unique")) {
+        setErr("That display name is no longer available (unique conflict). Refresh and try again.");
+      } else {
+        setErr(msg);
+      }
+    } finally {
+      setRenameBusy(false);
     }
   };
 
@@ -439,6 +516,53 @@ export function AccountsTab({ db }: { db: BridgeDb }) {
                       </h4>
                       {charsNote && <p className="text-xs text-amber-500">{charsNote}</p>}
                       <ResultTable result={charsRes} />
+                      {!charsNote && accountCharacters.length > 0 && (
+                        <div className="mt-3 space-y-3 rounded-lg border border-border bg-muted/10 p-3">
+                          <h5 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            Change display name
+                          </h5>
+                          {renameInfo && (
+                            <p className="rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-800 dark:text-emerald-300">
+                              {renameInfo}
+                            </p>
+                          )}
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <div className="space-y-1">
+                              <Label className="text-[10px] font-medium text-muted-foreground">Character</Label>
+                              <Select value={renameCharId} onValueChange={setRenameCharId}>
+                                <SelectTrigger className="h-9 bg-background text-sm">
+                                  <SelectValue placeholder="Character id" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {accountCharacters.map((r) => (
+                                    <SelectItem key={String(r.id)} value={String(r.id)}>
+                                      {String(r.id)} · {fmt(r.display_name)}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1 sm:col-span-2">
+                              <Label className="text-[10px] font-medium text-muted-foreground">New display name</Label>
+                              <Input
+                                className="font-mono text-sm"
+                                value={renameInput}
+                                onChange={(e) => setRenameInput(e.target.value)}
+                                placeholder="Display name"
+                                autoComplete="off"
+                              />
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={renameBusy}
+                            onClick={() => void applyCharacterDisplayName()}
+                          >
+                            {renameBusy ? "Applying…" : "Apply display name"}
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </TabsContent>
 
@@ -621,10 +745,9 @@ export function AccountsTab({ db }: { db: BridgeDb }) {
                                 {accountCharacters.map((ch) => {
                                   const idStr = String(ch.id);
                                   const name = ch.display_name != null ? String(ch.display_name) : "(unnamed)";
-                                  const realm = ch.realm_id != null ? String(ch.realm_id) : "?";
                                   return (
                                     <SelectItem key={idStr} value={idStr}>
-                                      {name} · #{idStr} · realm {realm}
+                                      {name} · #{idStr}
                                     </SelectItem>
                                   );
                                 })}

@@ -1,3 +1,4 @@
-SELECT 1 FROM accounts
-WHERE LOWER(login_username) = LOWER(?) AND id != ?
+SELECT 1
+FROM accounts
+WHERE LOWER(account_name) = LOWER(?) AND id != ?
 LIMIT 1

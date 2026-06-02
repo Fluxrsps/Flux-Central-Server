@@ -1,14 +1,14 @@
 SELECT
     a.id AS account_id,
-    a.login_username,
+    a.account_name,
     a.rights,
+    a.email,
+    a.twofa_enabled,
+    a.twofa_secret,
+    a.twofa_last_verified,
+    a.known_device,
     c.display_name,
-    c.email,
     c.members,
-    c.twofa_enabled,
-    c.twofa_secret,
-    c.twofa_last_verified,
-    c.known_device,
     c.id AS character_id,
     c.world_id,
     c.x,
@@ -25,7 +25,6 @@ SELECT
     c.online_session_heartbeat
 FROM accounts a
 JOIN account_characters c ON c.account_id = a.id
-WHERE c.realm_id = ?
-    AND LOWER(a.login_username) = ?
+WHERE LOWER(a.account_name) = ?
 ORDER BY c.id ASC
 LIMIT 1

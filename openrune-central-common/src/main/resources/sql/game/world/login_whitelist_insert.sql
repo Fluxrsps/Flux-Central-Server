@@ -1,2 +1,2 @@
-INSERT INTO world_login_whitelist (world_id, login_username)
+INSERT INTO world_login_whitelist (world_id, account_name)
 VALUES (?, ?)

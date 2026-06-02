@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import type { BridgeDb } from "../bridge/BridgeDb";
-import { REALMS_LIST } from "./queries";
+import {
+  REALM_DELETE,
+  REALM_EXISTS,
+  REALM_INSERT,
+  REALM_RENAME_COPY,
+  REALM_RENAME_WORLDS,
+  REALM_UPDATE,
+  REALM_WORLD_COUNT,
+  REALMS_LIST,
+} from "./queries";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,6 +27,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 type RealmRow = Record<string, unknown>;
 
 const emptyRealm = () => ({
+  realm_id: "",
   name: "",
   description: "",
   login_message: "",
@@ -30,6 +40,19 @@ const emptyRealm = () => ({
   player_xp_rate_in_hundreds: "100",
   global_xp_rate_in_hundreds: "100",
 });
+
+async function renameRealmId(db: BridgeDb, oldId: number, newId: number) {
+  if (oldId === newId) {
+    return;
+  }
+  const exists = await db.query(REALM_EXISTS, [newId]);
+  if (exists.rows.length > 0) {
+    throw new Error(`realm_id ${newId} already exists.`);
+  }
+  await db.query(REALM_RENAME_COPY, [newId, oldId]);
+  await db.query(REALM_RENAME_WORLDS, [newId, oldId]);
+  await db.query(REALM_DELETE, [oldId]);
+}
 
 export function RealmsTab({ db }: { db: BridgeDb }) {
   const [rows, setRows] = useState<RealmRow[]>([]);
@@ -62,6 +85,7 @@ export function RealmsTab({ db }: { db: BridgeDb }) {
     const id = Number(row.realm_id);
     setEditingId(id);
     setForm({
+      realm_id: String(id),
       name: String(row.name ?? ""),
       description: String(row.description ?? ""),
       login_message: String(row.login_message ?? ""),
@@ -84,6 +108,18 @@ export function RealmsTab({ db }: { db: BridgeDb }) {
     setErr(null);
     setInfo(null);
     try {
+      const realmId = Number(form.realm_id);
+      if (!Number.isFinite(realmId)) {
+        setErr("realm_id must be a number.");
+        setBusy(false);
+        return;
+      }
+      if (!form.name.trim()) {
+        setErr("name is required.");
+        setBusy(false);
+        return;
+      }
+
       const params = [
         form.name.trim(),
         form.description.trim() || null,
@@ -97,39 +133,26 @@ export function RealmsTab({ db }: { db: BridgeDb }) {
         Number(form.player_xp_rate_in_hundreds) || 100,
         Number(form.global_xp_rate_in_hundreds) || 100,
       ];
+
       if (editingId == null) {
-        const sql = `
-INSERT INTO realms (
-  name, description, login_message, login_broadcast, spawn_coord, respawn_coord,
-  dev_mode, require_registration, auto_assign_display_names,
-  player_xp_rate_in_hundreds, global_xp_rate_in_hundreds
-)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-RETURNING realm_id
-`.trim();
-        const r = await db.query(sql, params);
-        const id = Number(r.rows[0]?.realm_id);
-        setInfo(`Created realm_id ${id}.`);
-        setEditingId(id);
+        const exists = await db.query(REALM_EXISTS, [realmId]);
+        if (exists.rows.length > 0) {
+          setErr(`realm_id ${realmId} already exists.`);
+          setBusy(false);
+          return;
+        }
+        await db.query(REALM_INSERT, [realmId, ...params]);
+        setInfo(`Created realm ${realmId}.`);
+        setEditingId(realmId);
       } else {
-        const sql = `
-UPDATE realms
-SET
-  name = $1,
-  description = $2,
-  login_message = $3,
-  login_broadcast = $4,
-  spawn_coord = $5,
-  respawn_coord = $6,
-  dev_mode = $7,
-  require_registration = $8,
-  auto_assign_display_names = $9,
-  player_xp_rate_in_hundreds = $10,
-  global_xp_rate_in_hundreds = $11
-WHERE realm_id = $12
-`.trim();
-        await db.query(sql, [...params, editingId]);
-        setInfo(`Updated realms ${editingId}.`);
+        let rid = editingId;
+        if (realmId !== rid) {
+          await renameRealmId(db, rid, realmId);
+          rid = realmId;
+          setEditingId(realmId);
+        }
+        await db.query(REALM_UPDATE, [...params, rid]);
+        setInfo(`Updated realm ${rid}.`);
       }
       await load();
     } catch (e) {
@@ -143,25 +166,23 @@ WHERE realm_id = $12
     if (editingId == null) {
       return;
     }
+    const rid = editingId;
     setBusy(true);
     setErr(null);
     setInfo(null);
     try {
-      const cnt = await db.query("SELECT COUNT(*)::int AS c FROM worlds WHERE realm_id = $1", [editingId]);
+      const cnt = await db.query(REALM_WORLD_COUNT, [rid]);
       const c = Number(cnt.rows[0]?.c ?? 0);
       if (c > 0) {
-        setErr(`Cannot delete: ${c} worlds(s) still reference this realms.`);
+        setErr(`Cannot delete: ${c} world(s) still use realm ${rid}. Reassign or delete those worlds first.`);
         setBusy(false);
         return;
       }
-      const del = await db.query(
-        `DELETE FROM realms WHERE realm_id = $1 AND NOT EXISTS (SELECT 1 FROM worlds w WHERE w.realm_id = realms.realm_id)`,
-        [editingId],
-      );
+      const del = await db.query(REALM_DELETE, [rid]);
       if ((del.rowCount ?? 0) < 1) {
-        setErr("Delete affected 0 rows (realms missing or still referenced).");
+        setErr("Delete affected 0 rows (realm missing).");
       } else {
-        setInfo(`Deleted realms ${editingId}.`);
+        setInfo(`Deleted realm ${rid}.`);
         setDialogOpen(false);
         setEditingId(null);
         await load();
@@ -180,7 +201,7 @@ WHERE realm_id = $12
           Refresh
         </Button>
         <Button type="button" size="sm" onClick={openCreate}>
-          Add realms
+          Add realm
         </Button>
       </div>
       {err && !dialogOpen && <p className="text-sm text-destructive">{err}</p>}
@@ -226,13 +247,30 @@ WHERE realm_id = $12
       >
         <DialogContent className="flex max-h-[92vh] w-[min(96vw,56rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
           <DialogHeader className="space-y-0 border-b px-6 py-4 text-left">
-            <DialogTitle>{editingId == null ? "New realms" : `Edit realms ${editingId}`}</DialogTitle>
+            <DialogTitle>
+              {editingId == null ? "New realm" : `Edit realm ${form.realm_id || editingId}`}
+            </DialogTitle>
             <DialogDescription className="sr-only">Realm form</DialogDescription>
           </DialogHeader>
           <ScrollArea className="max-h-[min(78vh,760px)] px-6">
             <div className="space-y-3 py-4 pr-3">
               {err && <p className="text-sm text-destructive">{err}</p>}
               {info && <p className="text-sm text-green-400">{info}</p>}
+              <div className="space-y-2">
+                <Label htmlFor="realms-id">realm_id</Label>
+                <Input
+                  id="realms-id"
+                  className="max-w-xs font-mono"
+                  inputMode="numeric"
+                  value={form.realm_id}
+                  onChange={(e) => setForm({ ...form, realm_id: e.target.value })}
+                />
+                {editingId != null && (
+                  <p className="text-xs text-muted-foreground">
+                    Changing id copies this realm to the new id and moves all linked worlds.
+                  </p>
+                )}
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="realms-name">name</Label>
                 <Input id="realms-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />

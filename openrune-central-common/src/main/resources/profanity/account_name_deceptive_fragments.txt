@@ -1,0 +1,9 @@
+# Substrings matched case-insensitively on the **canonical** world-link account name (after punctuation is stripped).
+# Line "mod" uses the dedicated ContainsMod login script; all other lines use the deceptive / staff-impersonation script.
+mod
+jagex
+support
+system
+official
+customer
+helpdesk

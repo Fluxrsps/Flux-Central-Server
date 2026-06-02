@@ -1,1 +1,1 @@
-SELECT COUNT(*) FROM accounts WHERE login_username LIKE ? ESCAPE '\'
+SELECT COUNT(*) FROM accounts WHERE account_name LIKE ? ESCAPE '\'

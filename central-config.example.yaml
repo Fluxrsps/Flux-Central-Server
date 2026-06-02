@@ -1,0 +1,61 @@
+# Copy to central-config.yaml (or set OPENRUNE_CONFIG to its path).
+#
+# Resolution: environment variables are loaded first; values in this file override
+# env when set. Startup prints [Config] lines when YAML overrides env.
+#
+# All keys: see CentralConfigKey.kt (env var + yaml path for each).
+
+openrune:
+  # --- Database: pick one style (see README) ---
+  #
+  # Style A — host + name + credentials:
+  db:
+    host: 127.0.0.1
+    port: 5432
+    name: openrune_central
+    user: openrune
+    password: openrune
+    poolSize: 10
+  #
+  # Style B — JDBC URL + user/password (user/password optional when URL is set):
+  # jdbc:
+  #   url: jdbc:postgresql://127.0.0.1:5432/openrune_central
+  # db:
+  #   user: openrune
+  #   password: openrune
+  #
+  # Style C — JDBC URL only (trust/peer auth or creds in URL):
+  # jdbc:
+  #   url: jdbc:postgresql://127.0.0.1:5432/openrune_central
+  # db:
+  #   requireCredentials: false
+
+  # --- HTTP ---
+  # http:
+  #   port: 8080
+  #   trustProxy: false
+
+  # --- Cloudflare Tunnel (optional; cloudflared runs outside the JVM) ---
+  # cloudflared:
+  #   status: "1"
+  #   token: eyJhIjoi...
+  # When status+token are set, trust-proxy is auto-enabled unless http.trustProxy: false
+
+  sessionsTtlMs: 60000
+  # onlineSampleIntervalSeconds: 3600
+  worldsLinkPort: 9091
+  worldsLinkSoBacklog: 512
+
+  javConfig:
+    revision: 238
+    # remoteUrlTemplate: https://client.blurite.io/jav_local_%d.ws
+  # Per-key overrides (flat path openrune.javConfig.configProps.<key>):
+  #   configProps.title: My Server
+  #   configProps.codebase: http://127.0.0.1/
+  #   configProps.param.17: http://127.0.0.1:8080/worldslist.ws
+  #
+  # Or multiline block (same lines as jav_config.ws):
+  #   configProps: |
+  #     title=My Server
+  #     codebase=http://127.0.0.1/
+  #     param=25=238

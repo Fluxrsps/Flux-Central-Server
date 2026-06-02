@@ -4,7 +4,7 @@ import dev.or2.central.server.net.protocol.WorldServerOpcodes
 
 object WorldServerInboundFrameSpecs {
 
-    // ===== Framing =====
+    // ===== TCP length-field chunk (after 4-byte big-endian length prefix is stripped) =====
     const val MAX_INBOUND_FRAMED_BODY: Int = 16 * 1024
 
     // ===== Field limits =====
@@ -47,15 +47,15 @@ object WorldServerInboundFrameSpecs {
         InboundSpec(
             opcode = WorldServerOpcodes.OP_HEARTBEAT,
             name = "HEARTBEAT",
-            minBody = TOKEN_BYTES,
-            maxBody = TOKEN_BYTES
+            minBody = 2 + TOKEN_BYTES,
+            maxBody = 2 + TOKEN_BYTES
         ),
 
         InboundSpec(
             opcode = WorldServerOpcodes.OP_LOGOUT,
             name = "LOGOUT",
-            minBody = TOKEN_BYTES,
-            maxBody = TOKEN_BYTES
+            minBody = 2 + TOKEN_BYTES,
+            maxBody = 2 + TOKEN_BYTES
         ),
 
         ).associateBy { it.opcode }

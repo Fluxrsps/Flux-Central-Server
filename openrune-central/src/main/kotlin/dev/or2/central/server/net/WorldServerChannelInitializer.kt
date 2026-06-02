@@ -13,7 +13,13 @@ import io.netty.handler.timeout.ReadTimeoutHandler
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
 
-internal class WorldServerChannelPipeline(
+/**
+ * Child channel pipeline for world ↔ central TCP (rsprot-style: initializer owns ordered handlers).
+ *
+ * Pipeline: connection gate → read timeout → **length framing** (TCP chunk) → optional rate limit →
+ * **packet decode** (ByteBuf → [dev.or2.central.server.net.codec.WorldServerInboundPacket]) → session logic.
+ */
+internal class WorldServerChannelInitializer(
     private val sessionService: WorldServerSessionService,
     private val executor: ExecutorService,
     private val pushChannelRegistry: WorldServerPushChannelRegistry,
@@ -29,15 +35,18 @@ internal class WorldServerChannelPipeline(
 
         val p = ch.pipeline()
 
-        p.addLast("conn-gate", WorldServerConnectionGateHandler(connectionLimits))
+        p.addLast(
+            WorldServerHandlerNames.CONNECTION_GATE,
+            WorldServerConnectionGateHandler(connectionLimits),
+        )
 
         p.addLast(
-            "read-timeout",
+            WorldServerHandlerNames.READ_TIMEOUT,
             ReadTimeoutHandler(readTimeoutSeconds.toLong(), TimeUnit.SECONDS),
         )
 
         p.addLast(
-            "frame-decoder",
+            WorldServerHandlerNames.LENGTH_FRAME_DECODER,
             LengthFieldBasedFrameDecoder(
                 WorldServerInboundFrameSpecs.MAX_INBOUND_FRAMED_BODY,
                 LENGTH_FIELD_OFFSET,
@@ -47,17 +56,30 @@ internal class WorldServerChannelPipeline(
             ),
         )
 
-        p.addLast("frame-encoder", LengthFieldPrepender(4))
+        p.addLast(
+            WorldServerHandlerNames.LENGTH_FRAME_ENCODER,
+            LengthFieldPrepender(LENGTH_FIELD_LENGTH),
+        )
+
+        if (maxFramesPerSecond > 0.0) {
+            p.addLast(
+                WorldServerHandlerNames.INBOUND_RATE_LIMIT,
+                WorldServerInboundRateLimiterHandler(maxFramesPerSecond, maxFrameBurst),
+            )
+        }
 
         p.addLast(
-            "world-handler",
-            WorldServerNettyInboundHandler(
+            WorldServerHandlerNames.INBOUND_PACKET_DECODER,
+            WorldServerInboundPacketDecoder(),
+        )
+
+        p.addLast(
+            WorldServerHandlerNames.SESSION,
+            WorldServerSessionChannelHandler(
                 sessionService,
                 executor,
                 pushChannelRegistry,
                 worldOperationRepository,
-                maxFramesPerSecond,
-                maxFrameBurst,
             ),
         )
     }

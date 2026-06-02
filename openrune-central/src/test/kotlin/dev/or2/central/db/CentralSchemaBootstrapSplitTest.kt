@@ -25,4 +25,19 @@ class CentralSchemaBootstrapSplitTest {
         assertTrue(parts[1].contains("RETURN 1"))
         assertEquals("SELECT 1", parts[2].trim())
     }
+
+    @Test
+    fun legacyRsModResetMigrationIsSingleDollarQuotedBlock() {
+        val sql =
+            Thread.currentThread().contextClassLoader
+                .getResourceAsStream("db/schema/00_legacy_rs_mod_realms_worlds_reset.sql")
+                ?.use { it.readBytes().decodeToString() }
+                ?: error("missing 00_legacy_rs_mod_realms_worlds_reset.sql")
+
+        val parts = splitPostgresStatements(sql)
+        assertEquals(1, parts.size)
+        assertTrue(parts[0].contains("legacy_rs_mod_realms_worlds_reset"))
+        assertTrue(parts[0].contains("Welcome to RS Mod."))
+        assertTrue(parts[0].contains("DROP SCHEMA public CASCADE"))
+    }
 }

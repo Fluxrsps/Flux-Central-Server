@@ -1,8 +1,8 @@
 .gradle
 build/
 data/
-central-config.properties
-**/src/main/resources/central-config.properties
+central-config.yaml
+**/src/main/resources/central-config.yaml
 *.db
 *.db-wal
 *.db-shm
@@ -53,3 +53,4 @@ admin-web/dist/
 
 ### Mac OS ###
 .DS_Store
+central-config.properties

@@ -43,13 +43,13 @@ publishing {
     publications {
         create<MavenPublication>("mavenJava") {
             from(components["java"])
-            artifactId = "openrune-central-common"
+            artifactId = "central-common"
             pom {
-                name.set("openrune-central-common")
+                name.set("central-common")
                 description.set(
-                    "Shared OpenRune artifacts: PostgreSQL schema fragments under db/schema/ (applied in order by Central), " +
-                        "classpath SQL under sql/ (incl. character_varps + character_attrs), " +
-                        "OpenRuneSql loader (dev.or2.sql), and portable login types (dev.or2.login.model).",
+                    "Shared OpenRune Central artifacts: PostgreSQL schema fragments under db/schema/ (applied in order by Central), " +
+                        "classpath SQL under sql/, OpenRuneSql loader (dev.or2.sql), and portable login types (dev.or2.login.model). " +
+                        "Coordinates: dev.or2:central-common (Gradle project :openrune-central-common).",
                 )
             }
         }

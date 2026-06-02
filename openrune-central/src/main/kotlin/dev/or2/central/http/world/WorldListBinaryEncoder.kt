@@ -14,11 +14,11 @@ object WorldListBinaryEncoder {
         buffer.writeShort(worlds.size)
         for (world in worlds) {
             validate(world)
-            buffer.writeShort(world.worldId and 0xFFFF)
+            buffer.writeShort(world.worldId)
             buffer.writeInt(world.properties)
-            pjstr(buffer, world.host)
-            pjstr(buffer, world.activity)
-            buffer.writeByte(world.location and 0xFF)
+            buffer.pjstr( world.host)
+            buffer.pjstr( world.activity)
+            buffer.writeByte(world.location)
             buffer.writeShort(world.population)
         }
         val end = buffer.writerIndex()
@@ -42,8 +42,13 @@ object WorldListBinaryEncoder {
         }
     }
 
-    private fun pjstr(buffer: ByteBuf, value: String) {
-        buffer.writeCharSequence(value, cp1252)
-        buffer.writeByte(0)
+
+    public fun ByteBuf.pjstr(
+        s: CharSequence,
+        charset: Charset = Cp1252Charset,
+    ): ByteBuf {
+        writeCharSequence(s, charset)
+        writeByte(0)
+        return this
     }
 }

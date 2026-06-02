@@ -26,11 +26,15 @@ object WorldServerOpcodes {
     const val OP_SERVER_REBOOT: Int = 0x54
     const val OP_SERVER_BROADCAST: Int = 0x55
 
-    const val PROTOCOL_VERSION: Int = 5
+    /** World-link push: account character display_name changed in Central DB (see NOTIFY `character_display_name_events`). */
+    const val OP_SERVER_DISPLAY_NAME_SYNC: Int = 0x57
+
+    /** World-link version used in tests; supported client range must cover the game server's WORLD_HELLO u16. */
+    const val PROTOCOL_VERSION: Int = 7
 
     const val MIN_CLIENT_PROTOCOL_VERSION: Int = 2
 
-    const val MAX_CLIENT_PROTOCOL_VERSION: Int = 5
+    const val MAX_CLIENT_PROTOCOL_VERSION: Int = 7
 
     const val LOGIN_OK_RIGHTS_MAX_BYTES: Int = 4096
 
@@ -41,6 +45,13 @@ object WorldServerOpcodes {
     const val HELLO_REASON_BAD_KEY: Int = 2
     const val HELLO_REASON_UNKNOWN_WORLD: Int = 3
     const val HELLO_REASON_WORLD_DISABLED: Int = 4
+
+    /**
+     * World hello used the optional web-protocol trailer and it disagreed with this link's protocol
+     * or with [PROTOCOL_VERSION] from `/worlds.js`. Game clients should prompt to restart / update
+     * so lobby (world-link) and web list stay aligned.
+     */
+    const val HELLO_REASON_RESTART_CLIENT: Int = 5
 
     const val LOGIN_FAIL_INVALID: Int = 1
     const val LOGIN_FAIL_WORLD_FULL: Int = 2
@@ -57,6 +68,13 @@ object WorldServerOpcodes {
     const val LOGIN_FAIL_WORLD_MIN_LEVEL: Int = 13
     const val LOGIN_FAIL_WORLD_WHITELIST: Int = 14
     const val LOGIN_FAIL_WORLD_RIGHTS: Int = 15
+
+    /**
+     * Reserved numeric code for account / display-name policy (profanity, deceptive fragments, format).
+     * Central currently sends `LOGIN_FAIL_WORLD_ACCESS` (12) with the policy script trailer on the wire so
+     * game clients that only show v5 script dialogs for world-gate codes still display the policy lines.
+     */
+    const val LOGIN_FAIL_ACCOUNT_NAME: Int = 16
 
     const val TOKEN_BYTES: Int = 32
 }

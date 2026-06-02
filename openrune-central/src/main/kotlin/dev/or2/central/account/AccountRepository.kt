@@ -30,6 +30,16 @@ class AccountRepository(
         }
     }
 
+    fun collisionKeyTaken(collisionKey: String): Boolean {
+        val sql = OpenRuneSql.text("central/account/collision_key_taken.sql")
+        return dataSource.connection.use { conn ->
+            conn.prepareStatement(sql).use { ps ->
+                ps.setString(1, collisionKey)
+                ps.executeQuery().use { rs -> rs.next() }
+            }
+        }
+    }
+
     fun insertIfAbsent(
         username: String,
         passwordHash: String,
@@ -41,8 +51,9 @@ class AccountRepository(
             conn.prepareStatement(sql).use { ps ->
                 ps.setString(1, username)
                 ps.setString(2, passwordHash)
-                ps.setTimestamp(3, nowMillis.toTimestamp())
+                ps.setString(3, "")
                 ps.setTimestamp(4, nowMillis.toTimestamp())
+                ps.setTimestamp(5, nowMillis.toTimestamp())
 
                 ps.executeUpdate() > 0
             }

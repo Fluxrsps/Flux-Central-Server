@@ -1,0 +1,2 @@
+# Optional: add your own deceptive / staff-style substrings (one per line, # comments allowed).
+# Merged with account_name_deceptive_fragments.txt (custom ∪ base). A line "mod" uses the ContainsMod script.

@@ -1,0 +1,2 @@
+# Optional: extra profanity roots for world-link account names (merged with bad_words_local.txt + remote list).
+# Same line rules as other bad-word files (substring + compact match on canonical name).

@@ -1,12 +1,12 @@
 package dev.or2.central.server.net
 
 import dev.or2.central.WorldOperationRepository
+import dev.or2.central.server.net.codec.WorldServerInboundPacket
 import dev.or2.central.server.net.codec.writeServerRebootSchedule
 import dev.or2.central.server.net.push.WorldServerPushChannelRegistry
 import dev.or2.central.server.session.WorldServerConnectionState
 import dev.or2.central.server.session.WorldServerHandleResult
 import dev.or2.central.server.session.WorldServerSessionService
-import io.netty.buffer.ByteBuf
 import io.netty.buffer.Unpooled
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.SimpleChannelInboundHandler
@@ -19,40 +19,29 @@ import java.nio.channels.ClosedChannelException
 import java.util.concurrent.ExecutorService
 import org.slf4j.LoggerFactory
 
-class WorldServerNettyInboundHandler(
+/**
+ * Application handler for decoded [WorldServerInboundPacket]s — analogous to rsprot's
+ * [net.rsprot.protocol.api.login.LoginChannelHandler] consuming decoded messages instead of raw bytes.
+ */
+internal class WorldServerSessionChannelHandler(
     private val sessionService: WorldServerSessionService,
     private val executor: ExecutorService,
     private val pushChannelRegistry: WorldServerPushChannelRegistry,
     private val worldOperationRepository: WorldOperationRepository,
-    maxFramesPerSecond: Double,
-    maxFrameBurst: Double,
-) : SimpleChannelInboundHandler<ByteBuf>() {
+) : SimpleChannelInboundHandler<WorldServerInboundPacket>() {
 
-    private val log = LoggerFactory.getLogger(WorldServerNettyInboundHandler::class.java)
+    private val log = LoggerFactory.getLogger(WorldServerSessionChannelHandler::class.java)
 
     private val state = WorldServerConnectionState()
     private var registeredWorldId: Int? = null
 
-    private val frameBucket =
-        if (maxFramesPerSecond > 0.0) {
-            FrameTokenBucket(maxFramesPerSecond, maxFrameBurst.coerceAtLeast(1.0))
-        } else null
-
-    override fun channelRead0(ctx: ChannelHandlerContext, msg: ByteBuf) {
-        if (frameBucket?.tryConsume() == false) {
-            ctx.close()
-            return
-        }
-
-        val bytes = ByteArray(msg.readableBytes())
-        msg.readBytes(bytes)
-
+    override fun channelRead0(ctx: ChannelHandlerContext, msg: WorldServerInboundPacket) {
         state.remoteHost =
             (ctx.channel().remoteAddress() as? InetSocketAddress)?.address?.hostAddress
 
         executor.execute {
             try {
-                val result = sessionService.handle(state, bytes)
+                val result = sessionService.handle(state, msg)
 
                 handleResult(ctx, result)
             } catch (e: Exception) {
@@ -145,8 +134,8 @@ class WorldServerNettyInboundHandler(
                 log.debug("World server read timeout, closing {}", ctx.channel().remoteAddress())
 
             cause is TooLongFrameException ||
-                    cause is CorruptedFrameException ||
-                    cause is DecoderException ->
+                cause is CorruptedFrameException ||
+                cause is DecoderException ->
                 log.debug("World framing error from {}: {}", ctx.channel().remoteAddress(), cause.toString())
 
             else ->
@@ -189,25 +178,5 @@ class WorldServerNettyInboundHandler(
         }
         registeredWorldId = null
         super.channelInactive(ctx)
-    }
-
-    private class FrameTokenBucket(
-        private val refillPerSecond: Double,
-        private val maxBurst: Double,
-    ) {
-        private var tokens = maxBurst
-        private var lastNanos = System.nanoTime()
-
-        fun tryConsume(): Boolean {
-            val now = System.nanoTime()
-            val elapsed = (now - lastNanos) / 1_000_000_000.0
-            lastNanos = now
-
-            tokens = minOf(maxBurst, tokens + elapsed * refillPerSecond)
-
-            if (tokens < 1.0) return false
-            tokens -= 1.0
-            return true
-        }
     }
 }

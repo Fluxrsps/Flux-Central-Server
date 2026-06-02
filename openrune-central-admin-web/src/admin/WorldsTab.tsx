@@ -4,14 +4,30 @@ import {
   REALMS_LIST,
   WORLDS_ADMIN_LIST,
   WORLD_BROADCAST_INSERT,
+  WORLD_CHARACTER_COUNT,
+  WORLD_DELETE,
+  WORLD_DELETE_PREP_CHARACTERS,
+  WORLD_DELETE_PREP_SESSIONS,
+  WORLD_EXISTS,
   WORLD_REBOOT_CANCEL,
   WORLD_REBOOT_INSERT,
   WORLD_REBOOT_LIST_ACTIVE,
+  WORLD_RENAME_ACTIVITY_LOGS,
+  WORLD_RENAME_BROADCAST_LOG,
+  WORLD_RENAME_CHARACTERS_ONLINE,
+  WORLD_RENAME_CHARACTERS_WORLD,
+  WORLD_RENAME_COPY,
+  WORLD_RENAME_ONLINE_SAMPLES,
+  WORLD_RENAME_REBOOT_SCHEDULES,
+  WORLD_RENAME_SESSIONS,
+  WORLD_RENAME_WHITELIST,
+  WORLD_SESSION_COUNT,
   WORLD_WHITELIST_DELETE,
   WORLD_WHITELIST_INSERT,
   WORLD_WHITELIST_LIST,
 } from "./queries";
 import { flagsSetToOrderedCsv, parseFlagsCsvToSet, WORLD_FLAG_CATALOG } from "./worldFlagsCatalog";
+import { normalizeWorldLocation, WORLD_LOCATION_OPTIONS, worldLocationLabel } from "./worldLocationCatalog";
 import { generateWorldKeyMaterial } from "./worldKey";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -39,7 +55,7 @@ const emptyWorld = () => ({
   flags: "MEMBERS",
   host: "127.0.0.1",
   activity: "OpenRune",
-  location: "255",
+  location: "0",
   sort_order: "0",
   enabled: "1",
   max_players: "",
@@ -54,18 +70,6 @@ const emptyWorld = () => ({
   whitelist_usernames: "",
 });
 
-const LOCATION_OPTIONS: { value: string; label: string }[] = [
-  { value: "0", label: "0" },
-  { value: "1", label: "1" },
-  { value: "2", label: "2" },
-  { value: "3", label: "3" },
-  { value: "4", label: "4" },
-  { value: "5", label: "5" },
-  { value: "6", label: "6" },
-  { value: "7", label: "7" },
-  { value: "255", label: "255" },
-];
-
 const MODLEVEL_RIGHTS_OPTIONS: { value: string; label: string }[] = [
   { value: "modlevel.player", label: "Player mod" },
   { value: "modlevel.moderator", label: "Moderator" },
@@ -75,6 +79,26 @@ const MODLEVEL_RIGHTS_OPTIONS: { value: string; label: string }[] = [
 function normalizeModLevelRightsToken(raw: unknown): string {
   const t = String(raw ?? "").trim();
   return MODLEVEL_RIGHTS_OPTIONS.some((o) => o.value === t) ? t : "modlevel.admin";
+}
+
+async function renameWorldId(db: BridgeDb, oldId: number, newId: number) {
+  if (oldId === newId) {
+    return;
+  }
+  const exists = await db.query(WORLD_EXISTS, [newId]);
+  if (exists.rows.length > 0) {
+    throw new Error(`world_id ${newId} already exists.`);
+  }
+  await db.query(WORLD_RENAME_COPY, [newId, oldId]);
+  await db.query(WORLD_RENAME_WHITELIST, [newId, oldId]);
+  await db.query(WORLD_RENAME_SESSIONS, [newId, oldId]);
+  await db.query(WORLD_RENAME_CHARACTERS_WORLD, [newId, oldId]);
+  await db.query(WORLD_RENAME_CHARACTERS_ONLINE, [newId, oldId]);
+  await db.query(WORLD_RENAME_ONLINE_SAMPLES, [newId, oldId]);
+  await db.query(WORLD_RENAME_REBOOT_SCHEDULES, [newId, oldId]);
+  await db.query(WORLD_RENAME_BROADCAST_LOG, [newId, oldId]);
+  await db.query(WORLD_RENAME_ACTIVITY_LOGS, [newId, oldId]);
+  await db.query(WORLD_DELETE, [oldId]);
 }
 
 export function WorldsTab({ db }: { db: BridgeDb }) {
@@ -144,7 +168,7 @@ export function WorldsTab({ db }: { db: BridgeDb }) {
         }
         setForm((f) => ({
           ...f,
-          whitelist_usernames: r.rows.map((row) => String(row.login_username ?? "")).join("\n"),
+          whitelist_usernames: r.rows.map((row) => String(row.account_name ?? "")).join("\n"),
         }));
       })
       .catch(() => undefined);
@@ -342,7 +366,7 @@ export function WorldsTab({ db }: { db: BridgeDb }) {
       flags: String(row.flags ?? ""),
       host: String(row.host ?? ""),
       activity: String(row.activity ?? ""),
-      location: String(row.location ?? "0"),
+      location: normalizeWorldLocation(row.location),
       sort_order: String(row.sort_order ?? "0"),
       enabled: Number(row.enabled) ? "1" : "0",
       max_players: row.max_players == null ? "" : String(row.max_players),
@@ -388,7 +412,12 @@ export function WorldsTab({ db }: { db: BridgeDb }) {
       const flags = form.flags.trim();
       const host = form.host.trim();
       const activity = form.activity.trim();
-      const location = Number(form.location) || 0;
+      const location = Number(form.location);
+      if (!WORLD_LOCATION_OPTIONS.some((o) => o.value === String(location))) {
+        setErr("location must be a supported region (0, 1, 3, 7, or 8).");
+        setBusy(false);
+        return;
+      }
       const sort_order = Number(form.sort_order) || 0;
       const enabled = Number(form.enabled) ? 1 : 0;
       let max_players: number | null = null;
@@ -488,12 +517,24 @@ VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8, NULL, $9, $10, $11, $12, $13, $14, $1
         setInitialRealmId(realm_id);
         setPendingKeyHex(null);
       } else {
-        const wid = editingWorldId;
+        let wid = editingWorldId;
+        const newWid = Number(form.world_id);
+        if (!Number.isFinite(newWid)) {
+          setErr("world_id must be a number.");
+          setBusy(false);
+          return;
+        }
+        if (newWid !== wid) {
+          await renameWorldId(db, wid, newWid);
+          wid = newWid;
+          setEditingWorldId(newWid);
+        }
         await db.query(
           `UPDATE worlds SET flags = $1, host = $2, activity = $3, location = $4, sort_order = $5, enabled = $6, max_players = $7,
-login_restrictions_enabled = $8, login_min_total_level = $9, login_min_rights_token = $10,
-login_gate_min_level_enabled = $11, login_gate_rights_enabled = $12, login_gate_whitelist_enabled = $13
-WHERE world_id = $14`,
+realm_id = $8,
+login_restrictions_enabled = $9, login_min_total_level = $10, login_min_rights_token = $11,
+login_gate_min_level_enabled = $12, login_gate_rights_enabled = $13, login_gate_whitelist_enabled = $14
+WHERE world_id = $15`,
           [
             flags,
             host,
@@ -502,6 +543,7 @@ WHERE world_id = $14`,
             sort_order,
             enabled,
             max_players,
+            realm_id,
             login_restrictions_enabled,
             login_min_total_level,
             login_min_rights_token,
@@ -516,16 +558,55 @@ WHERE world_id = $14`,
         } else if (pendingKeyHex) {
           await db.query(`UPDATE worlds SET world_key_sha256 = decode($1, 'hex') WHERE world_id = $2`, [pendingKeyHex, wid]);
         }
-        if (initialRealmId != null && realm_id !== initialRealmId) {
-          await db.query(`UPDATE worlds SET realm_id = $1 WHERE world_id = $2`, [realm_id, wid]);
-        }
+        setInitialRealmId(realm_id);
         await persistWhitelist(wid);
         setInfo(`Updated worlds ${wid}.`);
         setPendingKeyHex(null);
         setClearKey(false);
-        setInitialRealmId(realm_id);
       }
       await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (editingWorldId == null) {
+      return;
+    }
+    const wid = editingWorldId;
+    setBusy(true);
+    setErr(null);
+    setInfo(null);
+    try {
+      const sess = await db.query(WORLD_SESSION_COUNT, [wid]);
+      const sessCount = Number(sess.rows[0]?.c ?? 0);
+      const chars = await db.query(WORLD_CHARACTER_COUNT, [wid]);
+      const charCount = Number(chars.rows[0]?.c ?? 0);
+      if (sessCount > 0) {
+        await db.query(WORLD_DELETE_PREP_SESSIONS, [wid]);
+      }
+      if (charCount > 0) {
+        await db.query(WORLD_DELETE_PREP_CHARACTERS, [wid]);
+      }
+      const del = await db.query(WORLD_DELETE, [wid]);
+      if ((del.rowCount ?? 0) < 1) {
+        setErr("Delete affected 0 rows (world missing).");
+      } else {
+        const bits: string[] = [`Deleted world ${wid}.`];
+        if (sessCount > 0) {
+          bits.push(`ended ${sessCount} session(s).`);
+        }
+        if (charCount > 0) {
+          bits.push(`cleared ${charCount} character world link(s).`);
+        }
+        setInfo(bits.join(" "));
+        setDialogOpen(false);
+        setEditingWorldId(null);
+        await load();
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -555,6 +636,7 @@ WHERE world_id = $14`,
           <TableRow>
             <TableHead className="w-14">id</TableHead>
             <TableHead>host</TableHead>
+            <TableHead className="w-28">location</TableHead>
             <TableHead>realms</TableHead>
             <TableHead className="w-12">en</TableHead>
             <TableHead className="w-14">key</TableHead>
@@ -566,6 +648,7 @@ WHERE world_id = $14`,
             <TableRow key={String(row.world_id)} className="cursor-pointer" onClick={() => openEdit(row)}>
               <TableCell className="font-mono text-xs">{String(row.world_id)}</TableCell>
               <TableCell className="text-sm">{String(row.host)}</TableCell>
+              <TableCell className="text-muted-foreground text-xs">{worldLocationLabel(row.location)}</TableCell>
               <TableCell className="text-muted-foreground text-xs">{realmsName(Number(row.realm_id))}</TableCell>
               <TableCell>{Number(row.enabled) ? "online" : "offline"}</TableCell>
               <TableCell>{Number(row.has_key) ? "yes" : "no"}</TableCell>
@@ -789,7 +872,9 @@ WHERE world_id = $14`,
       >
         <DialogContent className="flex max-h-[92vh] w-[min(96vw,56rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
           <DialogHeader className="space-y-0 border-b px-6 py-4 text-left">
-            <DialogTitle>{editingWorldId == null ? "New worlds" : `Edit worlds ${editingWorldId}`}</DialogTitle>
+            <DialogTitle>
+              {editingWorldId == null ? "New world" : `Edit world ${form.world_id || editingWorldId}`}
+            </DialogTitle>
             <DialogDescription className="sr-only">World form</DialogDescription>
           </DialogHeader>
           <ScrollArea className="max-h-[min(78vh,760px)] px-6">
@@ -802,12 +887,21 @@ WHERE world_id = $14`,
                   <TabsTrigger value="access">Login access</TabsTrigger>
                 </TabsList>
                 <TabsContent value="general" className="mt-4 space-y-4 focus-visible:outline-none">
-                  {editingWorldId == null && (
-                    <div className="space-y-2">
-                      <Label htmlFor="w-id">world_id</Label>
-                      <Input id="w-id" value={form.world_id} onChange={(e) => setForm({ ...form, world_id: e.target.value })} />
-                    </div>
-                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="w-id">world_id</Label>
+                    <Input
+                      id="w-id"
+                      className="max-w-xs font-mono"
+                      inputMode="numeric"
+                      value={form.world_id}
+                      onChange={(e) => setForm({ ...form, world_id: e.target.value })}
+                    />
+                    {editingWorldId != null && (
+                      <p className="text-xs text-muted-foreground">
+                        Changing id copies this world to the new id and updates linked sessions, characters, and logs.
+                      </p>
+                    )}
+                  </div>
                   <div className="space-y-2">
                     <Label>Flags</Label>
                     <div className="flex max-h-[220px] flex-wrap gap-1.5 overflow-y-auto rounded-md border border-border bg-muted/20 p-2">
@@ -849,9 +943,9 @@ WHERE world_id = $14`,
                           <SelectValue placeholder="Location" />
                         </SelectTrigger>
                         <SelectContent>
-                          {LOCATION_OPTIONS.map((o) => (
+                          {WORLD_LOCATION_OPTIONS.map((o) => (
                             <SelectItem key={o.value} value={o.value}>
-                              {o.label}
+                              {o.value} — {o.label}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1056,13 +1150,22 @@ WHERE world_id = $14`,
               </Tabs>
             </div>
           </ScrollArea>
-          <DialogFooter className="border-t px-6 py-4 sm:justify-end">
-            <Button type="button" variant="outline" size="sm" onClick={() => setDialogOpen(false)}>
-              Close
-            </Button>
-            <Button type="button" size="sm" disabled={busy} onClick={save}>
-              {busy ? "Saving…" : "Save"}
-            </Button>
+          <DialogFooter className="flex-row flex-wrap gap-2 border-t px-6 py-4 sm:justify-between">
+            <div className="flex gap-2">
+              {editingWorldId != null && (
+                <Button type="button" variant="destructive" size="sm" disabled={busy} onClick={remove}>
+                  Delete
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setDialogOpen(false)}>
+                Close
+              </Button>
+              <Button type="button" size="sm" disabled={busy} onClick={save}>
+                {busy ? "Saving…" : "Save"}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

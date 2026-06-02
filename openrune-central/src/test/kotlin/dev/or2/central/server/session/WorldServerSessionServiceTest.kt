@@ -113,7 +113,7 @@ class WorldServerSessionServiceTest {
             val hash = PasswordHasher().hash("pw")
             conn.prepareStatement(
                 """
-                INSERT INTO accounts (login_username, password_hash, rights)
+                INSERT INTO accounts (account_name, password_hash, rights)
                 VALUES ('gated', ?, '')
                 """.trimIndent(),
             ).use { ps ->
@@ -144,7 +144,7 @@ class WorldServerSessionServiceTest {
             val hash = PasswordHasher().hash("pw")
             conn.prepareStatement(
                 """
-                INSERT INTO accounts (login_username, password_hash, rights)
+                INSERT INTO accounts (account_name, password_hash, rights)
                 VALUES ('gated4', ?, '')
                 """.trimIndent(),
             ).use { ps ->
@@ -165,7 +165,7 @@ class WorldServerSessionServiceTest {
             val hash = PasswordHasher().hash("secret")
             conn.prepareStatement(
                 """
-                INSERT INTO accounts (login_username, password_hash, rights)
+                INSERT INTO accounts (account_name, password_hash, rights)
                 VALUES (?, ?, '')
                 """.trimIndent(),
             ).use { ps ->
@@ -209,7 +209,7 @@ class WorldServerSessionServiceTest {
             val hash = PasswordHasher().hash("secret")
             conn.prepareStatement(
                 """
-                INSERT INTO accounts (login_username, password_hash, rights)
+                INSERT INTO accounts (account_name, password_hash, rights)
                 VALUES (?, ?, '')
                 """.trimIndent(),
             ).use { ps ->
@@ -231,7 +231,7 @@ class WorldServerSessionServiceTest {
             val hash = PasswordHasher().hash("pw2")
             conn.prepareStatement(
                 """
-                INSERT INTO accounts (login_username, password_hash, rights)
+                INSERT INTO accounts (account_name, password_hash, rights)
                 VALUES ('v2user', ?, 'modlevel.admin')
                 """.trimIndent(),
             ).use { ps ->
@@ -254,7 +254,7 @@ class WorldServerSessionServiceTest {
             val hash = PasswordHasher().hash("secret")
             conn.prepareStatement(
                 """
-                INSERT INTO accounts (login_username, password_hash, rights)
+                INSERT INTO accounts (account_name, password_hash, rights)
                 VALUES (?, ?, 'modlevel.player')
                 """.trimIndent(),
             ).use { ps ->
@@ -277,7 +277,7 @@ class WorldServerSessionServiceTest {
             val hash = PasswordHasher().hash("secret")
             conn.prepareStatement(
                 """
-                INSERT INTO accounts (login_username, password_hash, rights)
+                INSERT INTO accounts (account_name, password_hash, rights)
                 VALUES (?, ?, '')
                 """.trimIndent(),
             ).use { ps ->
@@ -325,7 +325,7 @@ class WorldServerSessionServiceTest {
             val hash = PasswordHasher().hash("pw")
             conn.prepareStatement(
                 """
-                INSERT INTO accounts (login_username, password_hash, rights)
+                INSERT INTO accounts (account_name, password_hash, rights)
                 VALUES ('bob', ?, '')
                 """.trimIndent(),
             ).use { ps ->
@@ -355,7 +355,7 @@ class WorldServerSessionServiceTest {
             val hash = PasswordHasher().hash("pw")
             conn.prepareStatement(
                 """
-                INSERT INTO accounts (login_username, password_hash, rights)
+                INSERT INTO accounts (account_name, password_hash, rights)
                 VALUES ('banneduser', ?, '')
                 """.trimIndent(),
             ).use { ps ->
@@ -371,7 +371,7 @@ class WorldServerSessionServiceTest {
                 SELECT
                     'account', id, NULL, 'ban', CURRENT_TIMESTAMP, NULL,
                     'test ban', NULL, 'See website', 'staff-a', 'staff-b', 'active', NULL
-                FROM accounts WHERE login_username = 'banneduser'
+                FROM accounts WHERE account_name = 'banneduser'
                 """.trimIndent(),
             ).use { it.executeUpdate() }
         }
@@ -388,7 +388,7 @@ class WorldServerSessionServiceTest {
             val hash = PasswordHasher().hash("pw")
             conn.prepareStatement(
                 """
-                INSERT INTO accounts (login_username, password_hash, rights)
+                INSERT INTO accounts (account_name, password_hash, rights)
                 VALUES ('charuser', ?, '')
                 """.trimIndent(),
             ).use { ps ->
@@ -397,9 +397,9 @@ class WorldServerSessionServiceTest {
             }
             conn.prepareStatement(
                 """
-                WITH a AS (SELECT id FROM accounts WHERE login_username = 'charuser')
-                INSERT INTO account_characters (account_id, realm_id, display_name)
-                SELECT id, 1, 'punish_char_v4' FROM a
+                WITH a AS (SELECT id FROM accounts WHERE account_name = 'charuser')
+                INSERT INTO account_characters (account_id, display_name)
+                SELECT id, 'punish_char_v4' FROM a
                 """.trimIndent(),
             ).use { it.executeUpdate() }
             conn.prepareStatement(
@@ -440,7 +440,7 @@ class WorldServerSessionServiceTest {
             val hash = PasswordHasher().hash("pw")
             conn.prepareStatement(
                 """
-                INSERT INTO accounts (login_username, password_hash, rights)
+                INSERT INTO accounts (account_name, password_hash, rights)
                 VALUES ('lockeduser', ?, '')
                 """.trimIndent(),
             ).use { ps ->
@@ -456,7 +456,7 @@ class WorldServerSessionServiceTest {
                 SELECT
                     'account', id, NULL, 'locked', CURRENT_TIMESTAMP, NULL,
                     'test lock', NULL, NULL, 'staff', NULL, 'active', NULL
-                FROM accounts WHERE login_username = 'lockeduser'
+                FROM accounts WHERE account_name = 'lockeduser'
                 """.trimIndent(),
             ).use { it.executeUpdate() }
         }
@@ -475,7 +475,7 @@ class WorldServerSessionServiceTest {
             val hash = PasswordHasher().hash("pw")
             conn.prepareStatement(
                 """
-                INSERT INTO accounts (login_username, password_hash, rights)
+                INSERT INTO accounts (account_name, password_hash, rights)
                 VALUES ('v3trail', ?, '')
                 """.trimIndent(),
             ).use { ps ->
@@ -506,6 +506,115 @@ class WorldServerSessionServiceTest {
             service.handle(state2, buildLoginFrame("newbie", "wrong")) as WorldServerHandleResult.Reply
         assertEquals(WorldServerOpcodes.OP_LOGIN_FAIL, denied.payload[0].toInt() and 0xFF)
     }
+
+    @Test
+    fun accountNameContainsModRejectedWithScriptTrailer() {
+        val svc = createSessionServiceWithBadWords(emptySet())
+        val state = WorldServerConnectionState()
+        svc.handle(state, buildHelloFrame(WorldServerOpcodes.MAGIC, 1, "test-key", clientProtocolVersion = 5))
+        val denied = svc.handle(state, buildLoginFrame("abModc", "pw")) as WorldServerHandleResult.Reply
+        assertEquals(WorldServerOpcodes.LOGIN_FAIL_WORLD_ACCESS, readLoginFailCode(denied.payload))
+        val lines = readLoginFailScriptLines(denied.payload)
+        assertTrue(lines.any { it.contains("mod", ignoreCase = true) }, lines.toString())
+    }
+
+    @Test
+    fun accountNamePolicyRejectDoesNotInsertAccount() {
+        val svc = createSessionServiceWithBadWords(emptySet())
+        val state = WorldServerConnectionState()
+        svc.handle(state, buildHelloFrame(WorldServerOpcodes.MAGIC, 1, "test-key", clientProtocolVersion = 5))
+        val denied = svc.handle(state, buildLoginFrame("abModc", "pw")) as WorldServerHandleResult.Reply
+        assertEquals(WorldServerOpcodes.LOGIN_FAIL_WORLD_ACCESS, readLoginFailCode(denied.payload))
+        val count =
+            dataSource.connection.use { conn ->
+                conn.createStatement().use { st ->
+                    st.executeQuery(
+                        "SELECT COUNT(*) AS c FROM accounts WHERE LOWER(account_name) = LOWER('abmodc')",
+                    ).use { rs ->
+                        rs.next()
+                        rs.getInt("c")
+                    }
+                }
+            }
+        assertEquals(0, count)
+    }
+
+    @Test
+    fun accountNamePolicyRejectProtocolV2OmitsScriptTrailer() {
+        val svc = createSessionServiceWithBadWords(setOf("xyzzy"))
+        val state = WorldServerConnectionState()
+        svc.handle(state, buildHelloFrame(WorldServerOpcodes.MAGIC, 1, "test-key", clientProtocolVersion = 2))
+        val denied = svc.handle(state, buildLoginFrame("x xyzzy x", "pw")) as WorldServerHandleResult.Reply
+        assertEquals(WorldServerOpcodes.LOGIN_FAIL_WORLD_ACCESS, readLoginFailCode(denied.payload))
+        assertEquals(5, denied.payload.size, "v2–v4 LOGIN_FAIL is opcode + 4-byte code only")
+    }
+
+    @Test
+    fun accountNameIllegalWireCharacterRejectedWithScriptTrailer() {
+        val svc = createSessionServiceWithBadWords(emptySet())
+        val state = WorldServerConnectionState()
+        svc.handle(state, buildHelloFrame(WorldServerOpcodes.MAGIC, 1, "test-key", clientProtocolVersion = 5))
+        val denied = svc.handle(state, buildLoginFrame("bad@name", "pw")) as WorldServerHandleResult.Reply
+        assertEquals(WorldServerOpcodes.LOGIN_FAIL_WORLD_ACCESS, readLoginFailCode(denied.payload))
+        val lines = readLoginFailScriptLines(denied.payload)
+        assertTrue(lines.any { it.contains("odd", ignoreCase = true) }, lines.toString())
+    }
+
+    @Test
+    fun accountNameProfanityUsesConfiguredRoots() {
+        val svc = createSessionServiceWithBadWords(setOf("xyzzy"))
+        val state = WorldServerConnectionState()
+        svc.handle(state, buildHelloFrame(WorldServerOpcodes.MAGIC, 1, "test-key", clientProtocolVersion = 5))
+        val denied = svc.handle(state, buildLoginFrame("x xyzzy x", "pw")) as WorldServerHandleResult.Reply
+        assertEquals(WorldServerOpcodes.LOGIN_FAIL_WORLD_ACCESS, readLoginFailCode(denied.payload))
+        val lines = readLoginFailScriptLines(denied.payload)
+        assertTrue(lines.any { it.contains("blocked", ignoreCase = true) }, lines.toString())
+    }
+
+    @Test
+    fun collisionWithExistingCharacterDisplayNameRejectsRegistration() {
+        dataSource.connection.use { conn ->
+            val hash = PasswordHasher().hash("secret")
+            conn.prepareStatement(
+                """
+                INSERT INTO accounts (account_name, password_hash, rights)
+                VALUES ('holder', ?, '')
+                """.trimIndent(),
+            ).use { ps ->
+                ps.setString(1, hash)
+                ps.executeUpdate()
+            }
+            conn.prepareStatement(
+                """
+                INSERT INTO account_characters (account_id, display_name, members)
+                VALUES ((SELECT id FROM accounts WHERE account_name = 'holder'), 'DisplayHold', false)
+                """.trimIndent(),
+            ).use { ps ->
+                ps.executeUpdate()
+            }
+        }
+        val svc = createSessionServiceWithBadWords(emptySet())
+        val state = WorldServerConnectionState()
+        svc.handle(state, buildHelloFrame(WorldServerOpcodes.MAGIC, 1, "test-key"))
+        val denied =
+            svc.handle(state, buildLoginFrame("displayhold", "brand-new-pass")) as WorldServerHandleResult.Reply
+        assertEquals(WorldServerOpcodes.LOGIN_FAIL_INVALID, readLoginFailCode(denied.payload))
+    }
+
+    private fun createSessionServiceWithBadWords(badRoots: Set<String>): WorldServerSessionService =
+        WorldServerSessionService(
+            dataSource = dataSource,
+            worldRepository = WorldRepository(dataSource),
+            worldKeyVerifier = WorldKeyVerifier(),
+            accountRepository = AccountRepository(dataSource),
+            passwordHasher = PasswordHasher(),
+            sessionRepository = WorldSessionRepository(dataSource),
+            worldListCache = null,
+            punishmentService = PunishmentService(dataSource),
+            worldOperationRepository = WorldOperationRepository(dataSource),
+            worldLoginGateRepository = WorldLoginGateRepository(dataSource),
+            badWordRoots = { badRoots },
+        )
 
     private data class ParsedLoginOk(
         val token: ByteArray,

@@ -64,7 +64,7 @@ class CentralActivityLogRepositoryTest {
     private fun insertTestAccount(): Long =
         dataSource.connection.use { conn ->
             conn.prepareStatement(
-                "INSERT INTO accounts (login_username, password_hash, rights) VALUES (?, ?, ?) RETURNING id",
+                "INSERT INTO accounts (account_name, password_hash, rights) VALUES (?, ?, ?) RETURNING id",
             ).use { ps ->
                 ps.setString(1, "actlog_test_" + System.nanoTime())
                 ps.setString(2, "x")
@@ -79,11 +79,10 @@ class CentralActivityLogRepositoryTest {
     private fun insertCharacter(accountId: Long): Int =
         dataSource.connection.use { conn ->
             conn.prepareStatement(
-                "INSERT INTO account_characters (account_id, realm_id, display_name) VALUES (?, ?, ?) RETURNING id",
+                "INSERT INTO account_characters (account_id, display_name) VALUES (?, ?) RETURNING id",
             ).use { ps ->
                 ps.setLong(1, accountId)
-                ps.setInt(2, 1)
-                ps.setString(3, "login_count_char_" + System.nanoTime())
+                ps.setString(2, "login_count_char_" + System.nanoTime())
                 ps.executeQuery().use { rs ->
                     require(rs.next())
                     rs.getInt(1)
@@ -184,7 +183,7 @@ class CentralActivityLogRepositoryTest {
         val accountId1 =
             dataSource.connection.use { conn ->
                 conn.prepareStatement(
-                    "INSERT INTO accounts (login_username, password_hash, rights) VALUES (?, ?, ?) RETURNING id",
+                    "INSERT INTO accounts (account_name, password_hash, rights) VALUES (?, ?, ?) RETURNING id",
                 ).use { ps ->
                     ps.setString(1, "login_count_a_" + System.nanoTime())
                     ps.setString(2, "x")
@@ -198,7 +197,7 @@ class CentralActivityLogRepositoryTest {
         val accountId2 =
             dataSource.connection.use { conn ->
                 conn.prepareStatement(
-                    "INSERT INTO accounts (login_username, password_hash, rights) VALUES (?, ?, ?) RETURNING id",
+                    "INSERT INTO accounts (account_name, password_hash, rights) VALUES (?, ?, ?) RETURNING id",
                 ).use { ps ->
                     ps.setString(1, "login_count_b_" + System.nanoTime())
                     ps.setString(2, "x")
@@ -248,7 +247,7 @@ class CentralActivityLogRepositoryTest {
         val accountId =
             dataSource.connection.use { conn ->
                 conn.prepareStatement(
-                    "INSERT INTO accounts (login_username, password_hash, rights) VALUES (?, ?, ?) RETURNING id",
+                    "INSERT INTO accounts (account_name, password_hash, rights) VALUES (?, ?, ?) RETURNING id",
                 ).use { ps ->
                     ps.setString(1, "logtest_" + System.nanoTime())
                     ps.setString(2, "x")
@@ -262,11 +261,10 @@ class CentralActivityLogRepositoryTest {
         val characterId =
             dataSource.connection.use { conn ->
                 conn.prepareStatement(
-                    "INSERT INTO account_characters (account_id, realm_id, display_name) VALUES (?, ?, ?) RETURNING id",
+                    "INSERT INTO account_characters (account_id, display_name) VALUES (?, ?) RETURNING id",
                 ).use { ps ->
                     ps.setLong(1, accountId)
-                    ps.setInt(2, 1)
-                    ps.setString(3, "LogTest_" + System.nanoTime())
+                    ps.setString(2, "LogTest_" + System.nanoTime())
                     ps.executeQuery().use { rs ->
                         require(rs.next())
                         rs.getInt(1)

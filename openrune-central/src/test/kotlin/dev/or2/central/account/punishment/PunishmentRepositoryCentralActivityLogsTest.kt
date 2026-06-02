@@ -73,7 +73,7 @@ class PunishmentRepositoryCentralActivityLogsTest {
         val accountId =
             dataSource.connection.use { conn ->
                 conn.prepareStatement(
-                    "INSERT INTO accounts (login_username, password_hash, rights) VALUES ('p', 'x', '') RETURNING id",
+                    "INSERT INTO accounts (account_name, password_hash, rights) VALUES ('p', 'x', '') RETURNING id",
                 ).use { ps ->
                     ps.executeQuery().use { rs ->
                         require(rs.next())

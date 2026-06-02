@@ -1,50 +1,231 @@
 {
+  "_comment": "DO NOT EDIT: FILE GENERATED AUTOMATICALLY BY PTERODACTYL PANEL - PTERODACTYL.IO",
   "meta": {
     "version": "PTDL_v2",
     "update_url": null
   },
-  "exported_at": "2026-05-12T00:00:00+00:00",
+  "exported_at": "2026-05-19T00:00:00+00:00",
   "name": "OpenRune Central Server",
-  "author": "openrune",
-  "description": "OpenRune Central",
-  "features": ["java_version"],
+  "author": "OpenRune",
+  "description": "OpenRune Central - Kotlin/Ktor backend for game worlds: accounts, sessions, world-link TCP auth, worlds list, jav_config proxy, and activity logs.",
+  "features": [],
   "docker_images": {
     "Java 21": "ghcr.io/pterodactyl/yolks:java_21"
   },
   "file_denylist": [],
-  "startup": "OPENRUNE_HTTP_PORT={{server.build.default.port}} OPENRUNE_CONFIG=central-config.properties java -Xms128M -XX:MaxRAMPercentage=95.0 {{JVM_EXTRA_FLAGS}} -Duser.dir=/home/container -jar {{SERVER_JARFILE}}",
+  "startup": "bash start.sh",
   "config": {
     "files": "{}",
-    "startup": "{\"done\":[\"OpenRune Central is online\",\"regex:Application started\"]}",
-    "logs": "{}",
-    "stop": ""
+    "startup": "{\r\n    \"done\": \"OpenRune Central is online\"\r\n}",
+    "logs": "{\r\n    \"custom\": [\r\n        {\r\n            \"files\": \"logs/cloudflared.log\",\r\n            \"name\": \"Cloudflared\"\r\n        }\r\n    ]\r\n}",
+    "stop": "stop"
   },
   "scripts": {
     "installation": {
-      "script": "#!/bin/ash\nset -eu\ncd /mnt/server || exit 1\nJAR=\"{{SERVER_JARFILE}}\"\nif [ ! -f \"$JAR\" ]; then\n  echo \"ERROR: $JAR not found. Build the shadow JAR (./gradlew :openrune-central:shadowJar), then upload it here (SFTP / File Manager) as $JAR and run Reinstall or Start.\"\n  exit 1\nfi\necho \"Found $JAR — you supply the JAR; install check complete.\"\n",
-      "container": "ghcr.io/pterodactyl/installers:alpine",
+      "script": "#!/bin/ash\r\n\r\nINSTALL_DIR=\"/mnt/server\"\r\nRAW=\"https://raw.githubusercontent.com/OpenRune/OpenRune-Central-Server/main/deploy/pterodactyl\"\r\n\r\ncd \"${INSTALL_DIR}\" 2>/dev/null || {\r\n  echo \"[Install] ERROR: cannot cd ${INSTALL_DIR}\"\r\n  exit 1\r\n}\r\n\r\nif ! command -v curl >/dev/null 2>&1; then\r\n  echo \"[Install] installing curl...\"\r\n  apk add --no-cache curl || exit 1\r\nfi\r\n\r\nwrite_start_scripts() {\r\n  cat >start.sh <<'EOF'\r\n#!/usr/bin/env bash\r\nset -euo pipefail\r\n\r\ncd /home/container\r\n\r\nSERVER_JAR=\"${SERVER_JAR:-openrune-central-server.jar}\"\r\n\r\n# shellcheck source=start-modules.sh\r\nsource ./start-modules.sh\r\n\r\nif [[ ! -f \"${SERVER_JAR}\" ]]; then\r\n    echo \"[Orchestrator] ERROR: JAR not found: ${SERVER_JAR}\"\r\n    echo \"[Orchestrator] Upload ${SERVER_JAR} manually, or set Central update to Automatic or Notification required.\"\r\n    exit 1\r\nfi\r\n\r\nexec java -Xms128M -XX:MaxRAMPercentage=95.0 ${JAVA_OPTS:-} ${JVM_EXTRA_FLAGS:-} \\\r\n    -Duser.dir=/home/container \\\r\n    -jar \"${SERVER_JAR}\"\r\nEOF\r\n  cat >start-modules.sh <<'EOF'\r\n#!/usr/bin/env bash\r\n# Runs startup modules (logcleaner → cloudflared) before the Java process.\r\nset -euo pipefail\r\n\r\ncd /home/container\r\n\r\nBLUE='\\033[0;34m'\r\nBOLD_BLUE='\\033[1;34m'\r\nNC='\\033[0m'\r\n\r\nheader() {\r\n    echo -e \"${BLUE}───────────────────────────────────────────────${NC}\"\r\n    echo -e \"${BOLD_BLUE}[Orchestrator] $1${NC}\"\r\n}\r\n\r\nenabled() { [[ \"${1}\" =~ ^(true|1|yes|on)$ ]]; }\r\n\r\njarupdate_enabled() {\r\n    local mode=\"${OPENRUNE_CENTRAL_UPDATE:-}\"\r\n    if [[ -z \"${mode}\" ]]; then\r\n        if enabled \"${JAR_UPDATE_DISABLE:-0}\" || ! enabled \"${JAR_UPDATE_STATUS:-1}\"; then\r\n            return 1\r\n        fi\r\n        return 0\r\n    fi\r\n    case \"${mode,,}\" in\r\n        disabled|disable|off|0|false|no) return 1 ;;\r\n        *) return 0 ;;\r\n    esac\r\n}\r\n\r\nrun_module() {\r\n    local name=\"$1\"\r\n    local script=\"modules/${name}/start.sh\"\r\n    if [[ ! -f \"${script}\" ]]; then\r\n        echo \"[Orchestrator] Module '${name}' not found (${script}); skipping.\"\r\n        return 0\r\n    fi\r\n    if [[ \"${name}\" == \"jarupdate\" ]] && ! jarupdate_enabled; then\r\n        echo \"[Orchestrator] Central update disabled (OPENRUNE_CENTRAL_UPDATE=disabled); skipping jarupdate.\"\r\n        return 0\r\n    fi\r\n    header \"Running module: ${name}\"\r\n    bash \"${script}\"\r\n}\r\n\r\nMODULE_ORDER=\"${START_MODULES:-autoupdate jarupdate config logcleaner cloudflared}\"\r\nfor module in ${MODULE_ORDER}; do\r\n    run_module \"${module}\"\r\ndone\r\n\r\nheader \"Starting OpenRune Central (Java)\"\r\nEOF\r\n  chmod +x start.sh start-modules.sh\r\n}\r\n\r\nfetch() {\r\n  path=\"$1\"\r\n  echo \"[Install] GET ${path}\"\r\n  mkdir -p \"$(dirname \"${path}\")\"\r\n  if curl -fsSL --connect-timeout 15 --max-time 120 \"${RAW}/${path}\" -o \"${path}.part\"; then\r\n    mv -f \"${path}.part\" \"${path}\"\r\n    echo \"[Install] ok ${path}\"\r\n    return 0\r\n  fi\r\n  rm -f \"${path}.part\"\r\n  echo \"[Install] FAILED ${path}\"\r\n  return 1\r\n}\r\n\r\nfail() {\r\n  echo \"[Install] ERROR: $1\"\r\n  exit 1\r\n}\r\n\r\necho \"[Install] OpenRune Central\"\r\nwrite_start_scripts\r\n\r\nfetch modules/config/start.sh || fail \"modules/config/start.sh\"\r\nfetch modules/autoupdate/start.sh || fail \"modules/autoupdate/start.sh\"\r\nfetch modules/logcleaner/start.sh || fail \"modules/logcleaner/start.sh\"\r\nfetch modules/jarupdate/start.sh || fail \"modules/jarupdate/start.sh\"\r\nfetch modules/cloudflared/start.sh || fail \"modules/cloudflared/start.sh\"\r\nchmod +x modules/*/start.sh\r\n\r\nfetch autoupdate-files.txt || fail \"autoupdate-files.txt\"\r\nfetch install.sh || fail \"install.sh\"\r\nchmod +x install.sh\r\n\r\nARCH=$(uname -m)\r\ncase \"${ARCH}\" in\r\n  x86_64|amd64) CF=amd64 ;;\r\n  aarch64|arm64) CF=arm64 ;;\r\n  *) fail \"unsupported arch ${ARCH}\" ;;\r\nesac\r\n\r\necho \"[Install] GET cloudflared (${CF})\"\r\nif curl -fsSL --connect-timeout 15 --max-time 300 \\\r\n  \"https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${CF}\" \\\r\n  -o cloudflared.part; then\r\n  mv -f cloudflared.part cloudflared\r\n  chmod +x cloudflared\r\n  echo \"[Install] ok cloudflared\"\r\nelse\r\n  fail \"cloudflared download\"\r\nfi\r\n\r\necho \"[Install] done\"\r\n",
+      "container": "alpine:3.20",
       "entrypoint": "ash"
     }
   },
   "variables": [
     {
       "name": "Server JAR file",
-      "description": "Filename of the uploaded shadow JAR in the server root (default matches Gradle output openrune-central-server.jar).",
-      "env_variable": "SERVER_JARFILE",
+      "description": "Filename of the uploaded Central server JAR in /home/container.",
+      "env_variable": "SERVER_JAR",
       "default_value": "openrune-central-server.jar",
       "user_viewable": true,
       "user_editable": true,
-      "rules": "required|string|max:191",
+      "rules": "required|string|max:128",
       "field_type": "text"
     },
     {
-      "name": "Extra JVM flags",
-      "description": "Optional extra JVM arguments (e.g. -Dlogback.configurationFile=/home/container/logback.xml).",
+      "name": "JVM Extra Flags",
+      "description": "Additional JVM flags (e.g. -Xmx512M)",
       "env_variable": "JVM_EXTRA_FLAGS",
       "default_value": "",
       "user_viewable": true,
       "user_editable": true,
-      "rules": "string|max:512",
+      "rules": "nullable|string",
+      "field_type": "text"
+    },
+    {
+      "name": "Script update",
+      "description": "Sync deploy/pterodactyl scripts from GitHub main.",
+      "env_variable": "OPENRUNE_SCRIPT_UPDATE",
+      "default_value": "Automatic",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|in:Notification,Disabled,Automatic",
+      "field_type": "text"
+    },
+    {
+      "name": "Central update",
+      "description": "GitHub Releases JAR (openrune-central-server.jar).",
+      "env_variable": "OPENRUNE_CENTRAL_UPDATE",
+      "default_value": "Notification",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|in:Notification,Disabled,Automatic",
+      "field_type": "text"
+    },
+    {
+      "name": "Write central-config.yaml",
+      "description": "Generate central-config.yaml from the variables below on each start (1 = yes, 0 = use uploaded file only).",
+      "env_variable": "OPENRUNE_WRITE_CONFIG",
+      "default_value": "1",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|boolean",
+      "field_type": "text"
+    },
+    {
+      "name": "HTTP port",
+      "description": "Ktor HTTP port (world list, jav_config, admin). Match your public URL / Cloudflare tunnel target.",
+      "env_variable": "OPENRUNE_HTTP_PORT",
+      "default_value": "8080",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|integer|between:1,65535",
+      "field_type": "text"
+    },
+    {
+      "name": "Database host",
+      "description": "PostgreSQL hostname (used if JDBC URL is empty).",
+      "env_variable": "OPENRUNE_DB_HOST",
+      "default_value": "127.0.0.1",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:255",
+      "field_type": "text"
+    },
+    {
+      "name": "Database port",
+      "description": "PostgreSQL port.",
+      "env_variable": "OPENRUNE_DB_PORT",
+      "default_value": "5432",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|integer|between:1,65535",
+      "field_type": "text"
+    },
+    {
+      "name": "Database name",
+      "description": "PostgreSQL database name.",
+      "env_variable": "OPENRUNE_DB_NAME",
+      "default_value": "openrune_central",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:128",
+      "field_type": "text"
+    },
+    {
+      "name": "Database user",
+      "description": "PostgreSQL user.",
+      "env_variable": "OPENRUNE_DB_USER",
+      "default_value": "openrune",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:128",
+      "field_type": "text"
+    },
+    {
+      "name": "Database password",
+      "description": "PostgreSQL password. Optional when Database host is 127.0.0.1 (local trust/peer auth).",
+      "env_variable": "OPENRUNE_DB_PASSWORD",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:512",
+      "field_type": "text"
+    },
+    {
+      "name": "Database pool size",
+      "description": "Hikari maximum pool size (1–100).",
+      "env_variable": "OPENRUNE_DB_POOL_SIZE",
+      "default_value": "10",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|integer|between:1,100",
+      "field_type": "text"
+    },
+    {
+      "name": "JDBC URL (optional)",
+      "description": "Full JDBC URL override. If set, host/port/name are ignored.",
+      "env_variable": "OPENRUNE_JDBC_URL",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:512",
+      "field_type": "text"
+    },
+    {
+      "name": "Session TTL (ms)",
+      "description": "Stale session sweep TTL in milliseconds (default 60000 = 1 minute).",
+      "env_variable": "OPENRUNE_SESSION_TTL_MS",
+      "default_value": "60000",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|integer|min:1000",
+      "field_type": "text"
+    },
+    {
+      "name": "World-link TCP port",
+      "description": "World server auth port (0 or false to disable).",
+      "env_variable": "OPENRUNE_WORLD_LINK_PORT",
+      "default_value": "9091",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:8",
+      "field_type": "text"
+    },
+    {
+      "name": "Jav config revision",
+      "description": "Remote jav_config revision (jav_local_%d.ws).",
+      "env_variable": "OPENRUNE_JAV_CONFIG_REVISION",
+      "default_value": "238",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|integer|min:1",
+      "field_type": "text"
+    },
+    {
+      "name": "Jav config overrides",
+      "description": "One line: separate entries with ; (e.g. title=MyServer;codebase=…;param=25=238).",
+      "env_variable": "OPENRUNE_JAV_CONFIG_PROPS",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:8192",
+      "field_type": "textarea"
+    },
+    {
+      "name": "Enable Logcleaner Module",
+      "description": "Clean logs/tmp from the previous run before starting (1 = on, 0 = off).",
+      "env_variable": "LOGCLEANER_STATUS",
+      "default_value": "1",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|boolean",
+      "field_type": "text"
+    },
+    {
+      "name": "Enable Cloudflare Tunnel",
+      "description": "Start cloudflared on boot and enable HTTPS via Cloudflare (0 = off, 1 = on).",
+      "env_variable": "CLOUDFLARED_STATUS",
+      "default_value": "0",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|boolean",
+      "field_type": "text"
+    },
+    {
+      "name": "Cloudflared Tunnel Token",
+      "description": "Tunnel run token from Cloudflare (Zero Trust → Networks → Tunnels → Install connector).",
+      "env_variable": "CLOUDFLARED_TOKEN",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string",
       "field_type": "text"
     }
   ]

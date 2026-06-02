@@ -1,10 +1,14 @@
 package dev.or2.central.server.session
 
+import dev.or2.central.account.AccountNameAuthPolicy
 import dev.or2.central.account.AccountRepository
+import dev.or2.central.account.AccountNameWorldLinkPrecheck
+import dev.or2.central.account.AccountNameWorldLinkPrecheckResult
 import dev.or2.central.account.PasswordHasher
 import dev.or2.central.util.sha256
 import dev.or2.central.server.net.codec.FrameInput
-import dev.or2.central.server.net.codec.readFramePayload
+import dev.or2.central.server.net.codec.WorldServerInboundPacket
+import dev.or2.central.server.net.codec.readInboundPacketPayload
 import dev.or2.central.server.net.codec.writeHeartbeatAck
 import dev.or2.central.server.net.codec.writeHelloAck
 import dev.or2.central.server.net.codec.writeHelloReject
@@ -41,19 +45,27 @@ class WorldServerSessionService(
     private val worldOperationRepository: WorldOperationRepository,
     private val worldLoginGateRepository: WorldLoginGateRepository,
     private val telemetry: WorldServerTelemetry = WorldServerTelemetry.None,
+    private val badWordRoots: () -> Set<String> = { emptySet() },
 ) {
     private val log = LoggerFactory.getLogger(WorldServerSessionService::class.java)
     private val random = SecureRandom()
 
+    /** Test and tooling helper; production path uses [WorldServerInboundPacket] from Netty. */
     fun handle(
         state: WorldServerConnectionState,
-        payload: ByteArray,
+        rawPayload: ByteArray,
+    ): WorldServerHandleResult = handle(state, WorldServerInboundPacket(rawPayload))
+
+    fun handle(
+        state: WorldServerConnectionState,
+        packet: WorldServerInboundPacket,
     ): WorldServerHandleResult {
+        val payload = packet.content
         if (payload.isEmpty()) {
-            telemetry.recordInboundRejected(-1, "empty_frame")
+            telemetry.recordInboundRejected(-1, "empty_packet")
             return WorldServerHandleResult.CloseSilent
         }
-        val input = readFramePayload(payload)
+        val input = readInboundPacketPayload(payload)
         val bodyLen = input.remainingAfterOpcode
         val shapeErr = WorldServerInboundFrameSpecs.validateInboundBody(input.opcode, bodyLen)
         if (shapeErr != null) {
@@ -204,13 +216,36 @@ class WorldServerSessionService(
         if (input.trailingUnreadBytes() != 0) {
             return WorldServerHandleResult.Reply(writeLoginFail(WorldServerOpcodes.LOGIN_FAIL_BAD_FRAME))
         }
-        if (username.isBlank() || username.length > 64 || password.length > 256) {
+        if (password.length > 256) {
             return WorldServerHandleResult.Reply(writeLoginFail(WorldServerOpcodes.LOGIN_FAIL_BAD_FRAME))
         }
-        val loginKey = username.trim()
+        val roots = badWordRoots()
+        val canonical =
+            when (val pre = AccountNameWorldLinkPrecheck.evaluateRawUsernameForLogin(username, roots)) {
+                AccountNameWorldLinkPrecheckResult.BadFrame ->
+                    return WorldServerHandleResult.Reply(writeLoginFail(WorldServerOpcodes.LOGIN_FAIL_BAD_FRAME))
+                is AccountNameWorldLinkPrecheckResult.Policy -> {
+                    val lines = AccountNameAuthPolicy.policyScriptLines(pre.reason)
+                    // Protocol defines LOGIN_FAIL_ACCOUNT_NAME (16), but some game builds only attach LOGIN_FAIL
+                    // script UI for world-gate-style codes (e.g. WORLD_ACCESS). Unknown codes map to invalid creds.
+                    return WorldServerHandleResult.Reply(
+                        writeLoginFail(
+                            WorldServerOpcodes.LOGIN_FAIL_WORLD_ACCESS,
+                            state.protocolVersion,
+                            lines,
+                        ),
+                    )
+                }
+                is AccountNameWorldLinkPrecheckResult.Ok -> pre.canonical
+            }
+        val loginKey = canonical.lowercase()
         var accounts = accountRepository.findByUsername(loginKey)
         val registerNow = System.currentTimeMillis()
         if (accounts == null) {
+            val ck = AccountNameAuthPolicy.collisionKey(canonical)
+            if (ck.isNotEmpty() && accountRepository.collisionKeyTaken(ck)) {
+                return WorldServerHandleResult.Reply(writeLoginFail(WorldServerOpcodes.LOGIN_FAIL_INVALID))
+            }
             val hash = passwordHasher.hash(password)
             accountRepository.insertIfAbsent(loginKey, hash, registerNow)
             accounts = accountRepository.findByUsername(loginKey)

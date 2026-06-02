@@ -1,3 +1,9 @@
+/**
+ * Application-layer world ↔ central codec (per-opcode read/write helpers).
+ *
+ * **Transport:** each payload is wrapped in a 4-byte big-endian length prefix on the wire;
+ * see [dev.or2.central.server.net.WorldServerChannelInitializer] for the Netty pipeline.
+ */
 package dev.or2.central.server.net.codec
 
 import dev.or2.central.server.net.protocol.WorldServerOpcodes
@@ -7,7 +13,10 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.nio.charset.StandardCharsets
 
-fun readFramePayload(payload: ByteArray): FrameInput {
+/**
+ * Reads the opcode byte and exposes the rest of one [WorldServerInboundPacket] as a [FrameInput] stream.
+ */
+fun readInboundPacketPayload(payload: ByteArray): FrameInput {
     val din = DataInputStream(ByteArrayInputStream(payload))
     val opcode = din.readUnsignedByte()
     return FrameInput(opcode, din, payload.size - 1)
@@ -66,6 +75,12 @@ fun writeHelloReject(reason: Int): ByteArray {
     return out.toByteArray()
 }
 
+/**
+ * Writes `OP_LOGIN_FAIL`: 1-byte opcode, 4-byte failure code, then optionally three length-prefixed UTF-8 lines.
+ * Script lines are only appended when [clientProtocolVersion] is 5 or higher; v2–v4 peers must treat the
+ * frame as ending after the int code. Account-name policy responses may use wire code 12 (`LOGIN_FAIL_WORLD_ACCESS`)
+ * with a script trailer for legacy clients; see `WorldServerOpcodes.LOGIN_FAIL_ACCOUNT_NAME`.
+ */
 fun writeLoginFail(
     code: Int,
     clientProtocolVersion: Int = 0,
@@ -186,6 +201,9 @@ fun writeServerKick(
 
 private const val WORLD_OPS_UTF8_MAX: Int = 2048
 
+/** Must match game [org.rsmod.api.net.central.WorldLinkFrameSpecs.PM_RELAY_SENDER_DISPLAY_MAX_UTF8]. */
+private const val DISPLAY_NAME_SYNC_CHUNK_MAX_UTF8: Int = 96
+
 fun writeServerRebootSchedule(
     clear: Boolean,
     worldScope: Int,
@@ -208,6 +226,27 @@ fun writeServerRebootSchedule(
     d.writeLong(if (clear) 0L else rebootAtMs)
     d.writeShort(utf8.size)
     d.write(utf8)
+    d.flush()
+    return out.toByteArray()
+}
+
+fun writeServerDisplayNameSync(
+    accountId: Long,
+    characterId: Int,
+    newDisplayName: String,
+    priorDisplayName: String,
+): ByteArray {
+    val newUtf8 = utf8TruncatedTo(newDisplayName, DISPLAY_NAME_SYNC_CHUNK_MAX_UTF8)
+    val priorUtf8 = utf8TruncatedTo(priorDisplayName, DISPLAY_NAME_SYNC_CHUNK_MAX_UTF8)
+    val out = ByteArrayOutputStream()
+    val d = DataOutputStream(out)
+    d.writeByte(WorldServerOpcodes.OP_SERVER_DISPLAY_NAME_SYNC)
+    d.writeLong(accountId)
+    d.writeInt(characterId)
+    d.writeShort(newUtf8.size)
+    d.write(newUtf8)
+    d.writeShort(priorUtf8.size)
+    d.write(priorUtf8)
     d.flush()
     return out.toByteArray()
 }

@@ -1,4 +1,3 @@
-SELECT a.id, a.login_username AS username, a.password_hash, a.rights
+SELECT a.id, a.account_name AS username, a.password_hash, a.rights
 FROM accounts a
-WHERE LOWER(a.login_username) = LOWER(?)
-LIMIT 1
+WHERE LOWER(a.account_name) = LOWER(?)

@@ -24,20 +24,20 @@ class WorldServerInboundFrameSpecsTest {
 
     @Test
     fun inboundHeartbeatExactLength() {
-        val tokenLen = WorldServerInboundFrameSpecs.TOKEN_BYTES
+        val bodyLen = 2 + WorldServerInboundFrameSpecs.TOKEN_BYTES
         assertNull(
             WorldServerInboundFrameSpecs.validateInboundBody(
                 WorldServerOpcodes.OP_HEARTBEAT,
-                tokenLen,
+                bodyLen,
             ),
         )
         assertEquals(
             "too_short",
-            WorldServerInboundFrameSpecs.validateInboundBody(WorldServerOpcodes.OP_HEARTBEAT, tokenLen - 1),
+            WorldServerInboundFrameSpecs.validateInboundBody(WorldServerOpcodes.OP_HEARTBEAT, bodyLen - 1),
         )
         assertEquals(
             "too_long",
-            WorldServerInboundFrameSpecs.validateInboundBody(WorldServerOpcodes.OP_HEARTBEAT, tokenLen + 1),
+            WorldServerInboundFrameSpecs.validateInboundBody(WorldServerOpcodes.OP_HEARTBEAT, bodyLen + 1),
         )
     }
 

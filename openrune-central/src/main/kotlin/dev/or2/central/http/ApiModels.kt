@@ -17,3 +17,18 @@ data class PublicStatsResponse(
     val worlds: List<WorldOnlineDto>,
     val distinctLoginsTodayUtc: Int,
 )
+
+/** Account-name deceptive / staff-style substring fragments (world-link); separate from profanity list. */
+@Serializable
+data class AccountNameDeceptiveFragmentsResponse(
+    val fragments: List<String>,
+    val count: Int,
+)
+
+@Serializable
+data class AccountNameBadWordsResponse(
+    val phrases: List<String>,
+    val count: Int,
+    /** Same as [dev.or2.central.account.AccountNameAuthPolicy.MAX_CANONICAL_LENGTH]. */
+    val maxCanonicalLength: Int,
+)

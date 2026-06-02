@@ -3,13 +3,12 @@ package dev.or2.central.server.net
 import WorldServerConnectionLimits
 import dev.or2.central.WorldOperationRepository
 import dev.or2.central.util.config.WorldServerTcpConfig
+import dev.or2.central.server.net.bootstrap.WorldServerBootstrapFactory
 import dev.or2.central.server.net.push.WorldServerPushChannelRegistry
 import dev.or2.central.server.session.WorldServerSessionService
-import io.netty.bootstrap.ServerBootstrap
 import io.netty.buffer.PooledByteBufAllocator
-import io.netty.channel.*
+import io.netty.channel.Channel
 import io.netty.channel.nio.NioEventLoopGroup
-import io.netty.channel.socket.nio.NioServerSocketChannel
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.ThreadFactory
 import java.util.concurrent.atomic.AtomicInteger
@@ -45,21 +44,15 @@ class WorldServerTcpServer(
         val readTimeout = config.readTimeoutSeconds.coerceIn(5, 3600)
 
         val bootstrap =
-            ServerBootstrap()
-                .group(bossGroup, workerGroup)
-                .channel(NioServerSocketChannel::class.java)
-                .option(ChannelOption.SO_BACKLOG, backlog)
-                .option(ChannelOption.SO_REUSEADDR, true)
-                .option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
-                .childOption(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
-                .childOption(ChannelOption.TCP_NODELAY, true)
-                .childOption(ChannelOption.SO_KEEPALIVE, true)
-                .childOption(
-                    ChannelOption.WRITE_BUFFER_WATER_MARK,
-                    WriteBufferWaterMark(32 * 1024, 64 * 1024),
+            WorldServerBootstrapFactory
+                .createServerBootstrap(
+                    bossGroup = bossGroup,
+                    workerGroup = workerGroup,
+                    soBacklog = backlog,
+                    allocator = PooledByteBufAllocator.DEFAULT,
                 )
                 .childHandler(
-                    WorldServerChannelPipeline(
+                    WorldServerChannelInitializer(
                         sessionService = sessionService,
                         executor = executor,
                         pushChannelRegistry = pushChannelRegistry,

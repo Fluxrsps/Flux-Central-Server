@@ -14,7 +14,7 @@ val hostingDirectory: File =
     System.getenv("HOSTING_DIRECTORY")?.let { File(it) }
         ?: File("D:\\OpenRune\\openrune-hosting")
 
-val buildNumber = System.getenv("BUILD_NUMBER") ?: "1.0"
+val buildNumber = System.getenv("BUILD_NUMBER") ?: "1.3"
 
 subprojects {
     repositories {
@@ -45,7 +45,7 @@ publishing {
             pom {
                 name.set("OpenRune Central - central-all")
                 description.set(
-                    "Aggregate POM: depend on dev.or2:central-all to pull openrune-central-common + openrune-central at the same version.",
+                    "Aggregate POM: depend on dev.or2:central-all to pull dev.or2:central-common + dev.or2:openrune-central at the same version.",
                 )
                 url.set("https://github.com/OpenRune/OpenRune-Central-Server")
                 licenses {
@@ -74,7 +74,7 @@ publishing {
                         d.appendNode("version", buildNumber)
                         d.appendNode("scope", "compile")
                     }
-                    addDep("openrune-central-common")
+                    addDep("central-common")
                     addDep("openrune-central")
                 }
             }
@@ -91,12 +91,25 @@ publishing {
 tasks.register("publishCentralStackToHosting") {
     group = "publishing"
     description =
-        "Publishes openrune-central-common, openrune-central (library), and central-all POM to the hosting Maven repo."
+        "Publishes dev.or2:central-common, dev.or2:openrune-central (library), dev.or2:central-server (fat JAR without embedded central-common; POM depends on central-common), and dev.or2:central-all to the hosting Maven repo."
     dependsOn(
         ":openrune-central-common:publishMavenJavaPublicationToHostingRepository",
         ":openrune-central:publishMavenJavaPublicationToHostingRepository",
+        ":openrune-central:publishCentralServerPublicationToHostingRepository",
         ":publishCentralAllPublicationToHostingRepository",
     )
+}
+
+tasks.register("publishCentralCommonToHosting") {
+    group = "publishing"
+    description = "Publishes only dev.or2:central-common to the hosting Maven repo."
+    dependsOn(":openrune-central-common:publishMavenJavaPublicationToHostingRepository")
+}
+
+tasks.register("publishCentralServerToHosting") {
+    group = "publishing"
+    description = "Publishes only dev.or2:central-server (fat JAR; central-common is a POM dependency, not embedded) to the hosting Maven repo."
+    dependsOn(":openrune-central:publishCentralServerPublicationToHostingRepository")
 }
 
 tasks.register("runCentral") {

@@ -1,3 +1,3 @@
 UPDATE account_characters
 SET online_central_world_id = NULL, online_session_heartbeat = NULL
-WHERE realm_id = ? AND online_central_world_id = ?
+WHERE online_central_world_id = ?
