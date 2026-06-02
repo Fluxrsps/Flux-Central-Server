@@ -68,7 +68,7 @@ class CentralActivityLogRepositoryTest {
             ).use { ps ->
                 ps.setString(1, "actlog_test_" + System.nanoTime())
                 ps.setString(2, "x")
-                ps.setInt(3, 0)
+                ps.setString(3, "")
                 ps.executeQuery().use { rs ->
                     require(rs.next())
                     rs.getLong(1)
@@ -188,7 +188,7 @@ class CentralActivityLogRepositoryTest {
                 ).use { ps ->
                     ps.setString(1, "login_count_a_" + System.nanoTime())
                     ps.setString(2, "x")
-                    ps.setInt(3, 0)
+                    ps.setString(3, "")
                     ps.executeQuery().use { rs ->
                         require(rs.next())
                         rs.getLong(1)
@@ -202,7 +202,7 @@ class CentralActivityLogRepositoryTest {
                 ).use { ps ->
                     ps.setString(1, "login_count_b_" + System.nanoTime())
                     ps.setString(2, "x")
-                    ps.setInt(3, 0)
+                    ps.setString(3, "")
                     ps.executeQuery().use { rs ->
                         require(rs.next())
                         rs.getLong(1)
@@ -252,7 +252,7 @@ class CentralActivityLogRepositoryTest {
                 ).use { ps ->
                     ps.setString(1, "logtest_" + System.nanoTime())
                     ps.setString(2, "x")
-                    ps.setInt(3, 0)
+                    ps.setString(3, "")
                     ps.executeQuery().use { rs ->
                         require(rs.next())
                         rs.getLong(1)

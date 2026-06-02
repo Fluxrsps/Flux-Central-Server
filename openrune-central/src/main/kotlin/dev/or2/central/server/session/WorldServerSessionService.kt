@@ -1,7 +1,6 @@
 package dev.or2.central.server.session
 
 import dev.or2.central.account.AccountRepository
-import dev.or2.roles.LegacyModLevelMigration
 import dev.or2.central.account.PasswordHasher
 import dev.or2.central.util.sha256
 import dev.or2.central.server.net.codec.FrameInput
@@ -344,7 +343,7 @@ class WorldServerSessionService(
     private fun evaluateWorldLoginDeny(
         state: WorldServerConnectionState,
         loginUsername: String,
-        accountRights: Int,
+        accountRights: String,
         accountId: Long,
         characterId: Int?,
     ): WorldGateDeny? {
@@ -374,7 +373,7 @@ class WorldServerSessionService(
         }
         if (!ok && anyRights) {
             val t = state.loginMinRightsToken!!
-            if (LegacyModLevelMigration.rightsLevelMeetsModLevelToken(accountRights, t)) {
+            if (rightsHasToken(accountRights, t)) {
                 ok = true
             }
         }
@@ -428,12 +427,23 @@ class WorldServerSessionService(
      */
     private fun effectiveRightsForWorldLogin(
         realmDevMode: Boolean,
-        accountRights: Int,
+        accountRights: String,
     ): String {
         if (realmDevMode) {
             return "modlevel.owner"
         }
-        return LegacyModLevelMigration.rightsWireFromLevel(accountRights)
+        return accountRights
+    }
+
+    private fun rightsHasToken(
+        rights: String,
+        token: String,
+    ): Boolean {
+        val t = token.trim().lowercase()
+        if (t.isEmpty()) {
+            return false
+        }
+        return rights.split(',').any { it.trim().lowercase() == t }
     }
 
     private fun readSessionTokenStrict(input: FrameInput): ByteArray? {

@@ -23,7 +23,7 @@ class AccountRepository(
                         id = rs.getLong("id"),
                         username = rs.getString("username"),
                         passwordHash = rs.getString("password_hash"),
-                        rights = rs.getInt("rights"),
+                        rights = rs.getString("rights") ?: "",
                     )
                 }
             }

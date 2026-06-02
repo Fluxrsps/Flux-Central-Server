@@ -114,7 +114,7 @@ class WorldServerSessionServiceTest {
             conn.prepareStatement(
                 """
                 INSERT INTO accounts (login_username, password_hash, rights)
-                VALUES ('gated', ?, 0)
+                VALUES ('gated', ?, '')
                 """.trimIndent(),
             ).use { ps ->
                 ps.setString(1, hash)
@@ -145,7 +145,7 @@ class WorldServerSessionServiceTest {
             conn.prepareStatement(
                 """
                 INSERT INTO accounts (login_username, password_hash, rights)
-                VALUES ('gated4', ?, 0)
+                VALUES ('gated4', ?, '')
                 """.trimIndent(),
             ).use { ps ->
                 ps.setString(1, hash)
@@ -166,7 +166,7 @@ class WorldServerSessionServiceTest {
             conn.prepareStatement(
                 """
                 INSERT INTO accounts (login_username, password_hash, rights)
-                VALUES (?, ?, 0)
+                VALUES (?, ?, '')
                 """.trimIndent(),
             ).use { ps ->
                 ps.setString(1, "alice")
@@ -210,7 +210,7 @@ class WorldServerSessionServiceTest {
             conn.prepareStatement(
                 """
                 INSERT INTO accounts (login_username, password_hash, rights)
-                VALUES (?, ?, 0)
+                VALUES (?, ?, '')
                 """.trimIndent(),
             ).use { ps ->
                 ps.setString(1, "trail")
@@ -232,7 +232,7 @@ class WorldServerSessionServiceTest {
             conn.prepareStatement(
                 """
                 INSERT INTO accounts (login_username, password_hash, rights)
-                VALUES ('v2user', ?, 2)
+                VALUES ('v2user', ?, 'modlevel.admin')
                 """.trimIndent(),
             ).use { ps ->
                 ps.setString(1, hash)
@@ -255,7 +255,7 @@ class WorldServerSessionServiceTest {
             conn.prepareStatement(
                 """
                 INSERT INTO accounts (login_username, password_hash, rights)
-                VALUES (?, ?, 0)
+                VALUES (?, ?, 'modlevel.player')
                 """.trimIndent(),
             ).use { ps ->
                 ps.setString(1, "rightsuser")
@@ -278,7 +278,7 @@ class WorldServerSessionServiceTest {
             conn.prepareStatement(
                 """
                 INSERT INTO accounts (login_username, password_hash, rights)
-                VALUES (?, ?, 0)
+                VALUES (?, ?, '')
                 """.trimIndent(),
             ).use { ps ->
                 ps.setString(1, "plain")

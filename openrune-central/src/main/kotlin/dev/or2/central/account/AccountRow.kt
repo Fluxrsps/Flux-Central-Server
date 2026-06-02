@@ -4,5 +4,5 @@ data class AccountRow(
     val id: Long,
     val username: String,
     val passwordHash: String,
-    val rights: Int,
+    val rights: String,
 )
