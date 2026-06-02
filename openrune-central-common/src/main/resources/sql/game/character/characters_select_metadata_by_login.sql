@@ -2,6 +2,8 @@ SELECT
     a.id AS account_id,
     a.account_name,
     a.rights,
+    c.donator_rank,
+    c.game_mode,
     a.email,
     a.twofa_enabled,
     a.twofa_secret,

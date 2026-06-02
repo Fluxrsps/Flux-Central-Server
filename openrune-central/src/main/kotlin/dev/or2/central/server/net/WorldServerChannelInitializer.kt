@@ -1,6 +1,5 @@
 package dev.or2.central.server.net
 
-import WorldServerConnectionLimits
 import dev.or2.central.WorldOperationRepository
 import dev.or2.central.server.net.codec.WorldServerInboundFrameSpecs
 import dev.or2.central.server.net.push.WorldServerPushChannelRegistry

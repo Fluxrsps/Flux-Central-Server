@@ -1,3 +1,5 @@
+package dev.or2.central.server.net
+
 import dev.or2.central.server.net.ConnectionPermit
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger

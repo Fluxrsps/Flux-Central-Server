@@ -263,6 +263,7 @@ LIMIT 100
 
 export const ACCOUNT_CHARACTERS = `
 SELECT id, display_name, level, world_id,
+       donator_rank, game_mode,
        last_login, online_central_world_id
 FROM account_characters
 WHERE account_id = $1

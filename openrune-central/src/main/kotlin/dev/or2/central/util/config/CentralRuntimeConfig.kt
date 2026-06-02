@@ -163,7 +163,6 @@ fun centralRuntimeConfigFromJdbc(
 ): CentralRuntimeConfig {
     require(jdbcUrl.isNotBlank()) { "jdbcUrl is required" }
     require(dbUser.isNotBlank()) { "dbUser is required" }
-    require(dbPassword.isNotBlank()) { "dbPassword is required" }
 
     return CentralRuntimeConfig(
         jdbcUrl = jdbcUrl.trim(),

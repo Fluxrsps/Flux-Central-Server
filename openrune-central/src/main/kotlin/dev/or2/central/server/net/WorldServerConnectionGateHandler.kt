@@ -1,6 +1,5 @@
 package dev.or2.central.server.net
 
-import WorldServerConnectionLimits
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.ChannelInboundHandlerAdapter
 import java.net.InetSocketAddress

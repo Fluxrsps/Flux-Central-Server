@@ -23,7 +23,7 @@ class AccountRepository(
                         id = rs.getLong("id"),
                         username = rs.getString("username"),
                         passwordHash = rs.getString("password_hash"),
-                        rights = rs.getString("rights") ?: "",
+                        rights = rs.getInt("rights"),
                     )
                 }
             }
@@ -51,7 +51,7 @@ class AccountRepository(
             conn.prepareStatement(sql).use { ps ->
                 ps.setString(1, username)
                 ps.setString(2, passwordHash)
-                ps.setString(3, "")
+                ps.setInt(3, 0)
                 ps.setTimestamp(4, nowMillis.toTimestamp())
                 ps.setTimestamp(5, nowMillis.toTimestamp())
 

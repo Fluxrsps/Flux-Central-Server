@@ -1,7 +1,9 @@
 package dev.or2.central.account
 
+import dev.or2.roles.DonatorRanks
+import dev.or2.roles.GameModes
+import dev.or2.roles.Rights
 import java.time.LocalDateTime
-import java.time.ZoneId
 
 public data class CharacterData(
     public val characterId: Int,
@@ -9,7 +11,8 @@ public data class CharacterData(
     public val previousDisplayName: String?,
     public val displayNameChangedAtMillis: Long?,
     public val members: Boolean,
-    public val modLevel: String?,
+    public val donatorRank: DonatorRanks = DonatorRanks.NONE,
+    public val gameMode: GameModes = GameModes.ADVENTURER,
     public val worldId: Int?,
     public val coordX: Int,
     public val coordZ: Int,
@@ -33,17 +36,9 @@ public data class CharacterData(
 public class AccountData(
     public val accountId: Int,
     public val accountName: String,
-    public val rights: String,
-    public val email: String?,
-    public val twofaEnabled: Boolean,
-    public val twofaSecret: String?,
-    public val twofaLastVerified: LocalDateTime?,
-    public val knownDevice: Int?,
+    public val rights: Rights,
     public val characterData: CharacterData,
 ) {
-    public val twofaLastVerifiedMillis: Long?
-        get() =
-            twofaLastVerified?.atZone(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
 
     override fun toString(): String =
         "AccountData(" +
