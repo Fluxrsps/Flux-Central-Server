@@ -2,6 +2,7 @@ package dev.or2.central
 
 import dev.or2.central.http.world.WorldListCache
 import dev.or2.central.server.net.codec.writeServerBroadcast
+import dev.or2.central.server.net.codec.writeServerDiscordIdSync
 import dev.or2.central.server.net.codec.writeServerDisplayNameSync
 import dev.or2.central.server.net.codec.writeServerKick
 import dev.or2.central.server.net.codec.writeServerMuteUpdate
@@ -82,6 +83,7 @@ class PostgresEventListenerService(
             st.addBatch("LISTEN world_reboot_events")
             st.addBatch("LISTEN world_broadcast_events")
             st.addBatch("LISTEN character_display_name_events")
+            st.addBatch("LISTEN account_discord_id_events")
             st.executeBatch()
         }
 
@@ -106,6 +108,7 @@ class PostgresEventListenerService(
                         "world_reboot_events" -> handleReboot(n.parameter)
                         "world_broadcast_events" -> handleBroadcast(n.parameter)
                         "character_display_name_events" -> handleDisplayName(n.parameter)
+                        "account_discord_id_events" -> handleDiscordId(n.parameter)
                     }
                 }
 
@@ -233,6 +236,20 @@ class PostgresEventListenerService(
         val frame = writeServerBroadcast(scope, message, url, icon)
 
         flush(if (worldId != null) listOf(worldId) else emptyList(), frame, broadcastAll = worldId == null)
+    }
+
+    private fun handleDiscordId(raw: String?) {
+        val root = parseObject(raw) ?: return
+        val accountId = root.long("account_id") ?: return
+        val discordId = root.string("discord_id")
+
+        runCatching {
+            val worlds = sessionRepository.findDistinctWorldIdsByAccount(accountId)
+            val frame = writeServerDiscordIdSync(accountId, discordId)
+            flush(worlds, frame, broadcastAll = true)
+        }.onFailure {
+            log.warn("Discord id push failed for account {}", accountId, it)
+        }
     }
 
     private fun handleDisplayName(raw: String?) {

@@ -30,19 +30,29 @@ public data class CharacterData(
     public val onlineSessionHeartbeat: LocalDateTime? = null,
 )
 
-/**
- * Account row fields plus the loaded [account_characters] row ([characterData]).
- */
+public data class TwoFactorAuthData(
+    public val twoFactorSecret: String? = null,
+    public val twoFactorRecoveryCodes: String? = null,
+    public val twoFactorConfirmedAt: LocalDateTime? = null,
+) {
+
+    public val twoFactorConfirmed: Boolean
+        get() = !twoFactorSecret.isNullOrBlank() && twoFactorConfirmedAt != null
+}
+
 public class AccountData(
     public val accountId: Int,
     public val accountName: String,
     public val rights: Rights,
+    public val discordId: Long? = null,
+    public val twoFactorAuth: TwoFactorAuthData = TwoFactorAuthData(),
     public val characterData: CharacterData,
 ) {
 
     override fun toString(): String =
         "AccountData(" +
-            "accountId=$accountId, accountName=$accountName, " +
+            "accountId=$accountId, accountName=$accountName, discordId=$discordId, " +
+            "twoFactorConfirmed=${twoFactorAuth.twoFactorConfirmed}, " +
             "characterId=${characterData.characterId}, displayName=${characterData.displayName}, " +
             "members=${characterData.members}, worldId=${characterData.worldId})"
 }

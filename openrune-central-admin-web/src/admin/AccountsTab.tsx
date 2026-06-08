@@ -69,6 +69,7 @@ export function AccountsTab({ db }: { db: BridgeDb }) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<AccountRow | null>(null);
   const [rightsEdit, setRightsEdit] = useState("0");
+  const [discordIdEdit, setDiscordIdEdit] = useState("");
   const [sessionsRes, setSessionsRes] = useState<QueryResultPayload | null>(null);
   const [charsRes, setCharsRes] = useState<QueryResultPayload | null>(null);
   const [charsNote, setCharsNote] = useState<string | null>(null);
@@ -184,6 +185,7 @@ export function AccountsTab({ db }: { db: BridgeDb }) {
       const row = acc.rows[0] ?? null;
       setDetail(row);
       setRightsEdit(String(row?.rights ?? 0));
+      setDiscordIdEdit(row?.discord_id != null ? String(row.discord_id) : "");
       try {
         const se = await db.query(ACCOUNT_SESSIONS, [id]);
         setSessionsRes({
@@ -368,7 +370,11 @@ export function AccountsTab({ db }: { db: BridgeDb }) {
     setErr(null);
     setSaveInfo(null);
     try {
-      await db.query(`UPDATE accounts SET rights = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, [rightsLevel, selectedId]);
+      const discordId = discordIdEdit.trim() === "" ? null : discordIdEdit.trim();
+      await db.query(
+        `UPDATE accounts SET rights = $1, discord_id = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3`,
+        [rightsLevel, discordId, selectedId],
+      );
       setSaveInfo("Saved.");
       await loadList();
       await loadDetail(selectedId);
@@ -481,6 +487,18 @@ export function AccountsTab({ db }: { db: BridgeDb }) {
                         <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Updated</p>
                         <p className="font-mono text-sm">{fmt(detail.updated_at)}</p>
                       </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="acct-discord-id">Discord ID</Label>
+                      <Input
+                        id="acct-discord-id"
+                        className="font-mono text-sm"
+                        placeholder="Discord user snowflake ID"
+                        value={discordIdEdit}
+                        onChange={(e) => setDiscordIdEdit(e.target.value)}
+                        autoComplete="off"
+                      />
                     </div>
 
                     <div className="space-y-2">

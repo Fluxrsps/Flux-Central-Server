@@ -58,6 +58,27 @@ object WorldServerInboundFrameSpecs {
             maxBody = 2 + TOKEN_BYTES
         ),
 
+        InboundSpec(
+            opcode = WorldServerOpcodes.OP_GAME_DISCORD_LINK_PENDING,
+            name = "GAME_DISCORD_LINK_PENDING",
+            minBody = 4 + 2 + 1,
+            maxBody = 4 + 2 + WorldServerOpcodes.GAME_DISCORD_LINK_USERNAME_MAX_UTF8,
+        ),
+
+        InboundSpec(
+            opcode = WorldServerOpcodes.OP_GAME_DISCORD_LINK_INVALIDATE,
+            name = "GAME_DISCORD_LINK_INVALIDATE",
+            minBody = 4,
+            maxBody = 4,
+        ),
+
+        InboundSpec(
+            opcode = WorldServerOpcodes.OP_GAME_ANNOUNCEMENT,
+            name = "GAME_ANNOUNCEMENT",
+            minBody = 2 + 1,
+            maxBody = 2 + WorldServerOpcodes.GAME_ANNOUNCEMENT_JSON_MAX_UTF8,
+        ),
+
         ).associateBy { it.opcode }
 
     fun spec(opcode: Int): InboundSpec? = inboundSpecs[opcode]

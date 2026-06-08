@@ -227,14 +227,14 @@ export function escapeLike(s: string): string {
 }
 
 export const ACCOUNTS_LIST_PAGE = `
-SELECT id, account_name AS username, rights, created_at, updated_at
+SELECT id, account_name AS username, rights, discord_id, created_at, updated_at
 FROM accounts
 ORDER BY id DESC
 LIMIT $1 OFFSET $2
 `.trim();
 
 export const ACCOUNTS_SEARCH_PAGE = `
-SELECT id, account_name AS username, rights, created_at, updated_at
+SELECT id, account_name AS username, rights, discord_id, created_at, updated_at
 FROM accounts
 WHERE account_name LIKE $1 ESCAPE '\\'
 ORDER BY id DESC
@@ -248,7 +248,7 @@ SELECT COUNT(*)::bigint AS c FROM accounts WHERE account_name LIKE $1 ESCAPE '\\
 `.trim();
 
 export const ACCOUNT_BY_ID = `
-SELECT id, account_name AS username, rights, created_at, updated_at
+SELECT id, account_name AS username, rights, discord_id, created_at, updated_at
 FROM accounts
 WHERE id = $1
 `.trim();

@@ -45,6 +45,7 @@ class WorldServerSessionService(
     private val punishmentService: PunishmentService,
     private val worldOperationRepository: WorldOperationRepository,
     private val worldLoginGateRepository: WorldLoginGateRepository,
+    private val discordLinkHandler: WorldServerDiscordLinkHandler? = null,
     private val telemetry: WorldServerTelemetry = WorldServerTelemetry.None,
     private val badWordRoots: () -> Set<String> = { emptySet() },
 ) {
@@ -80,6 +81,9 @@ class WorldServerSessionService(
             WorldServerOpcodes.OP_PUSH_SUBSCRIBE -> handlePushSubscribe(state, input)
             WorldServerOpcodes.OP_HEARTBEAT -> handleHeartbeat(state, input)
             WorldServerOpcodes.OP_LOGOUT -> handleLogout(state, input)
+            WorldServerOpcodes.OP_GAME_DISCORD_LINK_PENDING -> handleGameDiscordLinkPending(state, input)
+            WorldServerOpcodes.OP_GAME_DISCORD_LINK_INVALIDATE -> handleGameDiscordLinkInvalidate(state, input)
+            WorldServerOpcodes.OP_GAME_ANNOUNCEMENT -> handleGameAnnouncement(state, input)
             else -> {
                 telemetry.recordInboundRejected(input.opcode, "unhandled_opcode")
                 if (!state.handshakeDone) {
@@ -344,6 +348,75 @@ class WorldServerSessionService(
         }
         sessionRepository.touchById(row.id, System.currentTimeMillis())
         return WorldServerHandleResult.Reply(writeHeartbeatAck())
+    }
+
+    private fun handleGameDiscordLinkPending(
+        state: WorldServerConnectionState,
+        input: FrameInput,
+    ): WorldServerHandleResult {
+        if (!state.handshakeDone) {
+            return WorldServerHandleResult.Reply(writeLoginFail(WorldServerOpcodes.LOGIN_FAIL_NOT_HANDSHAKEN))
+        }
+        val handler = discordLinkHandler
+            ?: return WorldServerHandleResult.Reply(
+                dev.or2.central.server.net.codec.writeGameDiscordLinkPendingFail(
+                    WorldServerOpcodes.GAME_DISCORD_LINK_PENDING_FAIL_UNAVAILABLE,
+                ),
+                closeAfterWrite = true,
+            )
+        val accountId = input.readIntCompat()
+        val discordUsername = input.readUtf8LenPrefixed()
+        if (input.trailingUnreadBytes() != 0) {
+            return handler.handlePending(accountId = 0, discordUsername = "")
+        }
+        return handler.handlePending(accountId, discordUsername)
+    }
+
+    private fun handleGameDiscordLinkInvalidate(
+        state: WorldServerConnectionState,
+        input: FrameInput,
+    ): WorldServerHandleResult {
+        if (!state.handshakeDone) {
+            return WorldServerHandleResult.Reply(writeLoginFail(WorldServerOpcodes.LOGIN_FAIL_NOT_HANDSHAKEN))
+        }
+        val handler = discordLinkHandler
+            ?: return WorldServerHandleResult.Reply(
+                dev.or2.central.server.net.codec.writeGameDiscordLinkPendingFail(
+                    WorldServerOpcodes.GAME_DISCORD_LINK_PENDING_FAIL_UNAVAILABLE,
+                ),
+                closeAfterWrite = true,
+            )
+        val accountId = input.readIntCompat()
+        if (input.trailingUnreadBytes() != 0) {
+            return handler.handleInvalidate(0)
+        }
+        return handler.handleInvalidate(accountId)
+    }
+
+    private fun handleGameAnnouncement(
+        state: WorldServerConnectionState,
+        input: FrameInput,
+    ): WorldServerHandleResult {
+        if (!state.handshakeDone) {
+            return WorldServerHandleResult.Reply(writeLoginFail(WorldServerOpcodes.LOGIN_FAIL_NOT_HANDSHAKEN))
+        }
+        val message = input.readUtf8LenPrefixed()
+        if (input.trailingUnreadBytes() != 0) {
+            return loginBadFrameReply()
+        }
+        if (message.isBlank()) {
+            return loginBadFrameReply()
+        }
+        worldOperationRepository.insertBroadcastLog(
+            worldId = null,
+            message = message,
+            url = "",
+            icon = "",
+            createdBy = "world-${state.worldId}",
+        )
+        return WorldServerHandleResult.Reply(
+            dev.or2.central.server.net.codec.writeGameAnnouncementAck(),
+        )
     }
 
     private fun handleLogout(

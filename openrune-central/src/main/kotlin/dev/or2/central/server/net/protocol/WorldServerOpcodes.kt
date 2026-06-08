@@ -26,8 +26,40 @@ object WorldServerOpcodes {
     const val OP_SERVER_REBOOT: Int = 0x54
     const val OP_SERVER_BROADCAST: Int = 0x55
 
+    /** World-link push: account discord_id changed in Central DB (see NOTIFY `account_discord_id_events`). */
+    const val OP_SERVER_DISCORD_ID_SYNC: Int = 0x56
+
     /** World-link push: account character display_name changed in Central DB (see NOTIFY `character_display_name_events`). */
     const val OP_SERVER_DISPLAY_NAME_SYNC: Int = 0x57
+
+    /** World → Central: start in-game Discord code verification (`::discordlink`). */
+    const val OP_GAME_DISCORD_LINK_PENDING: Int = 0x58
+
+    const val OP_GAME_DISCORD_LINK_PENDING_OK: Int = 0x59
+
+    const val OP_GAME_DISCORD_LINK_PENDING_FAIL: Int = 0x5A
+
+    /** World → Central: clear pending Discord link state (e.g. on logout). */
+    const val OP_GAME_DISCORD_LINK_INVALIDATE: Int = 0x5B
+
+    const val OP_GAME_DISCORD_LINK_INVALIDATE_ACK: Int = 0x5C
+
+    /** World → Central: relay a server-wide announcement to all worlds + Discord. */
+    const val OP_GAME_ANNOUNCEMENT: Int = 0x5D
+
+    const val OP_GAME_ANNOUNCEMENT_ACK: Int = 0x5E
+
+    const val GAME_ANNOUNCEMENT_JSON_MAX_UTF8: Int = 8192
+
+    const val GAME_DISCORD_LINK_PENDING_FAIL_BAD_FRAME: Int = 1
+
+    const val GAME_DISCORD_LINK_PENDING_FAIL_ALREADY_LINKED: Int = 2
+
+    const val GAME_DISCORD_LINK_PENDING_FAIL_DISCORD_NOT_FOUND: Int = 3
+
+    const val GAME_DISCORD_LINK_PENDING_FAIL_UNAVAILABLE: Int = 4
+
+    const val GAME_DISCORD_LINK_USERNAME_MAX_UTF8: Int = 128
 
     /** World-link version used in tests; supported client range must cover the game server's WORLD_HELLO u16. */
     const val PROTOCOL_VERSION: Int = 7

@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     two_factor_recovery_codes TEXT,
     two_factor_confirmed_at TIMESTAMP,
     remember_token VARCHAR(100),
+    discord_id TEXT,
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

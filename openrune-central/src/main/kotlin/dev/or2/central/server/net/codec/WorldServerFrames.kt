@@ -158,6 +158,44 @@ fun writeHeartbeatAck(): ByteArray {
     return out.toByteArray()
 }
 
+fun writeGameDiscordLinkPendingOk(
+    code: Int,
+    dmSent: Boolean,
+): ByteArray {
+    val out = ByteArrayOutputStream()
+    val d = DataOutputStream(out)
+    d.writeByte(WorldServerOpcodes.OP_GAME_DISCORD_LINK_PENDING_OK)
+    d.writeInt(code)
+    d.writeByte(if (dmSent) 1 else 0)
+    d.flush()
+    return out.toByteArray()
+}
+
+fun writeGameDiscordLinkPendingFail(reason: Int): ByteArray {
+    val out = ByteArrayOutputStream()
+    val d = DataOutputStream(out)
+    d.writeByte(WorldServerOpcodes.OP_GAME_DISCORD_LINK_PENDING_FAIL)
+    d.writeByte(reason)
+    d.flush()
+    return out.toByteArray()
+}
+
+fun writeGameDiscordLinkInvalidateAck(): ByteArray {
+    val out = ByteArrayOutputStream()
+    val d = DataOutputStream(out)
+    d.writeByte(WorldServerOpcodes.OP_GAME_DISCORD_LINK_INVALIDATE_ACK)
+    d.flush()
+    return out.toByteArray()
+}
+
+fun writeGameAnnouncementAck(): ByteArray {
+    val out = ByteArrayOutputStream()
+    val d = DataOutputStream(out)
+    d.writeByte(WorldServerOpcodes.OP_GAME_ANNOUNCEMENT_ACK)
+    d.flush()
+    return out.toByteArray()
+}
+
 fun writeServerRevokeLogin(
     accountId: Long,
     characterId: Int,
@@ -226,6 +264,21 @@ fun writeServerRebootSchedule(
     d.writeLong(if (clear) 0L else rebootAtMs)
     d.writeShort(utf8.size)
     d.write(utf8)
+    d.flush()
+    return out.toByteArray()
+}
+
+fun writeServerDiscordIdSync(
+    accountId: Long,
+    discordId: String,
+): ByteArray {
+    val discordUtf8 = utf8TruncatedTo(discordId, DISPLAY_NAME_SYNC_CHUNK_MAX_UTF8)
+    val out = ByteArrayOutputStream()
+    val d = DataOutputStream(out)
+    d.writeByte(WorldServerOpcodes.OP_SERVER_DISCORD_ID_SYNC)
+    d.writeLong(accountId)
+    d.writeShort(discordUtf8.size)
+    d.write(discordUtf8)
     d.flush()
     return out.toByteArray()
 }

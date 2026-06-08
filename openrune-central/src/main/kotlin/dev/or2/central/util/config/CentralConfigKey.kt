@@ -95,6 +95,11 @@ enum class CentralConfigKey(
         "openrune.cloudflared.token",
         envAliases = listOf("OPENRUNE_CLOUDFLARED_TOKEN"),
     ),
+
+    DISCORD_BOT_TOKEN("OPENRUNE_DISCORD_BOT_TOKEN", "openrune.discord.botToken"),
+    DISCORD_GUILD_ID("OPENRUNE_DISCORD_GUILD_ID", "openrune.discord.guildId"),
+    DISCORD_PENDING_TTL_MINUTES("OPENRUNE_DISCORD_PENDING_TTL_MINUTES", "openrune.discord.pendingTtlMinutes"),
+    DISCORD_MAX_WRONG_ATTEMPTS("OPENRUNE_DISCORD_MAX_WRONG_ATTEMPTS", "openrune.discord.maxWrongAttempts"),
     ;
 
     val allEnvNames: List<String> = listOf(envVar) + envAliases

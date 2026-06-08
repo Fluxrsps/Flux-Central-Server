@@ -41,6 +41,7 @@ data class CentralRuntimeConfig(
      * unless overridden by `openrune.http.trustProxy`.
      */
     val httpTrustProxy: Boolean,
+    val discord: DiscordRuntimeConfig,
 )
 
 private val log = LoggerFactory.getLogger("dev.or2.central.config")
@@ -118,6 +119,7 @@ fun loadCentralRuntimeConfig(): CentralRuntimeConfig {
             cfg.int(CentralConfigKey.JAV_CONFIG_HTTP_TIMEOUT_SEC, 20).coerceIn(3, 120),
 
         httpTrustProxy = resolveHttpTrustProxy(cfg),
+        discord = resolveDiscordRuntimeConfig(cfg),
     )
 }
 
@@ -160,6 +162,7 @@ fun centralRuntimeConfigFromJdbc(
     javConfigRefreshMinutes: Int = 15,
     javConfigHttpTimeoutSeconds: Int = 20,
     httpTrustProxy: Boolean = false,
+    discord: DiscordRuntimeConfig = DiscordRuntimeConfig(),
 ): CentralRuntimeConfig {
     require(jdbcUrl.isNotBlank()) { "jdbcUrl is required" }
     require(dbUser.isNotBlank()) { "dbUser is required" }
@@ -194,6 +197,7 @@ fun centralRuntimeConfigFromJdbc(
         javConfigRefreshMinutes = javConfigRefreshMinutes.coerceIn(1, 10_080),
         javConfigHttpTimeoutSeconds = javConfigHttpTimeoutSeconds.coerceIn(3, 120),
         httpTrustProxy = httpTrustProxy,
+        discord = discord,
     )
 }
 

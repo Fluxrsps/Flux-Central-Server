@@ -9,6 +9,7 @@ import dev.or2.central.analytics.OnlineSampleRepository
 import dev.or2.central.analytics.OnlineSampler
 import dev.or2.central.util.config.CentralRuntimeConfig
 import dev.or2.central.util.config.createCentralDataSource
+import dev.or2.central.discord.DiscordRuntime
 import dev.or2.central.http.CentralHttpContext
 import dev.or2.central.http.centralHttpRoutes
 import dev.or2.central.server.logging.CentralActivityLogRepository
@@ -21,6 +22,7 @@ import dev.or2.central.http.world.WorldRepository
 import dev.or2.central.util.config.WorldServerTcpConfig
 import dev.or2.central.server.net.WorldServerTcpServer
 import dev.or2.central.server.net.push.WorldServerPushChannelRegistry
+import dev.or2.central.server.session.WorldServerDiscordLinkHandler
 import dev.or2.central.server.session.WorldServerSessionService
 import dev.or2.central.server.session.WorldSessionReaper
 import dev.or2.central.server.console.CentralConsoleCommands
@@ -82,6 +84,14 @@ fun Application.installOpenRuneCentral(centralConfig: CentralRuntimeConfig) {
     val worldServerTelemetry: WorldServerTelemetry = WorldServerTelemetry.None
     val worldServerPushChannelRegistry = WorldServerPushChannelRegistry()
 
+    val discord = DiscordRuntime.create(dataSource, centralConfig.discord, sessionRepository)
+    val worldServerDiscordLinkHandler =
+        WorldServerDiscordLinkHandler(
+            linkService = discord.linkService,
+            messenger = discord.linkMessenger,
+            discordConfig = centralConfig.discord,
+        )
+
     val worldServerSessionService =
         WorldServerSessionService(
             dataSource = dataSource,
@@ -94,6 +104,7 @@ fun Application.installOpenRuneCentral(centralConfig: CentralRuntimeConfig) {
             punishmentService = punishmentService,
             worldOperationRepository = worldOperationRepository,
             worldLoginGateRepository = worldLoginGateRepository,
+            discordLinkHandler = worldServerDiscordLinkHandler,
             telemetry = worldServerTelemetry,
             badWordRoots = { badWordIndex.roots() },
         )
@@ -159,6 +170,7 @@ fun Application.installOpenRuneCentral(centralConfig: CentralRuntimeConfig) {
     val shutdownOnce = AtomicBoolean(false)
     val shutdownCentral: () -> Unit = {
         if (shutdownOnce.compareAndSet(false, true)) {
+            discord.botService.stop()
             punishmentPgListener.stop()
             worldServerTcpServer?.stop()
             worldServerTcpExecutor?.shutdown()
@@ -184,6 +196,7 @@ fun Application.installOpenRuneCentral(centralConfig: CentralRuntimeConfig) {
 
         worldServerTcpServer?.start()
         punishmentPgListener.start()
+        discord.botService.start()
         val badWordsEveryMin = centralConfig.badWordsRefreshMinutes.toLong().coerceAtLeast(5L)
         scheduler.scheduleAtFixedRate(
             {

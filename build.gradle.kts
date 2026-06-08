@@ -14,7 +14,7 @@ val hostingDirectory: File =
     System.getenv("HOSTING_DIRECTORY")?.let { File(it) }
         ?: File("D:\\RSPS\\Fluxious\\hosting")
 
-val buildNumber = System.getenv("BUILD_NUMBER") ?: "flux-1.3"
+val buildNumber = System.getenv("BUILD_NUMBER") ?: "flux-1.4"
 
 subprojects {
     repositories {
