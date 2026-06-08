@@ -1,6 +1,5 @@
 UPDATE accounts
 SET
-    known_device = ?,
     discord_id = ?,
     two_factor_secret = ?,
     two_factor_recovery_codes = ?,

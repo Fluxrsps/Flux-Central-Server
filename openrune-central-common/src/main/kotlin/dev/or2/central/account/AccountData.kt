@@ -45,7 +45,7 @@ public class AccountData(
     public val accountName: String,
     public val rights: Rights,
     public val discordId: Long? = null,
-    public val knownDevice: Int? = null,
+    public val trustedDevices: List<TrustedDeviceData> = emptyList(),
     public val twoFactorAuth: TwoFactorAuthData = TwoFactorAuthData(),
     public val characterData: CharacterData,
 ) {

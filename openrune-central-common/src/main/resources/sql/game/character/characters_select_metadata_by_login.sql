@@ -10,7 +10,6 @@ SELECT
     a.two_factor_secret,
     a.two_factor_recovery_codes,
     a.two_factor_confirmed_at,
-    a.known_device,
     c.display_name,
     c.members,
     c.id AS character_id,

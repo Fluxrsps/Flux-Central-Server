@@ -3,7 +3,6 @@ CREATE TABLE IF NOT EXISTS account_characters (
     account_id INTEGER NOT NULL,
     display_name TEXT UNIQUE,
     members BOOLEAN NOT NULL DEFAULT FALSE,
-    known_device INTEGER,
     world_id INTEGER,
     x INTEGER NOT NULL DEFAULT 3200,
     z INTEGER NOT NULL DEFAULT 3200,
