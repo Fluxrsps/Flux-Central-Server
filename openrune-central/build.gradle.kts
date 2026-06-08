@@ -46,7 +46,7 @@ dependencies {
     implementation("org.yaml:snakeyaml:2.3")
 
     implementation("io.netty:netty-handler:4.1.118.Final")
-    implementation("de.mkammerer:argon2-jvm:2.12")
+    implementation("at.favre.lib:bcrypt:0.10.2")
     implementation("net.dv8tion:JDA:5.5.1")
 
     testImplementation(kotlin("test-junit5"))

@@ -8,9 +8,9 @@ class PasswordHasherTest {
     private val hasher = PasswordHasher()
 
     @Test
-    fun argon2RoundTrip() {
+    fun bcryptRoundTrip() {
         val stored = hasher.hash("my-secret")
-        assertTrue(stored.startsWith("\$argon2"))
+        assertTrue(stored.startsWith("\$2y\$12\$"))
         assertTrue(hasher.verify(stored, "my-secret"))
         assertFalse(hasher.verify(stored, "wrong"))
     }

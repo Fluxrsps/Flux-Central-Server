@@ -1,39 +1,21 @@
 package dev.or2.central.account
 
-import de.mkammerer.argon2.Argon2
-import de.mkammerer.argon2.Argon2Factory
+import at.favre.lib.crypto.bcrypt.BCrypt
 
 class PasswordHasher {
-    private val argon2: Argon2 by lazy { Argon2Factory.create() }
-
     fun verify(
         storedHash: String,
         plainPassword: String,
     ): Boolean {
-        val h = storedHash.trim()
-        if (h.isEmpty()) return false
-        val pw = plainPassword.toCharArray()
-        return try {
-            argon2.verify(h, pw)
-        } catch (_: IllegalArgumentException) {
-            false
-        } finally {
-            argon2.wipeArray(pw)
-        }
+        val hash = storedHash.trim()
+        if (hash.isEmpty()) return false
+        return BCrypt.verifyer().verify(plainPassword.toCharArray(), hash.toByteArray()).verified
     }
 
-    fun hash(plainPassword: String): String {
-        val pw = plainPassword.toCharArray()
-        return try {
-            argon2.hash(ARGON2_ITERATIONS, ARGON2_MEMORY_KIB, ARGON2_PARALLELISM, pw)
-        } finally {
-            argon2.wipeArray(pw)
-        }
-    }
+    fun hash(plainPassword: String): String =
+        BCrypt.with(BCrypt.Version.VERSION_2Y).hashToString(BCRYPT_COST, plainPassword.toCharArray())
 
     private companion object {
-        private const val ARGON2_ITERATIONS = 20
-        private const val ARGON2_MEMORY_KIB = 65536
-        private const val ARGON2_PARALLELISM = 1
+        private const val BCRYPT_COST = 12
     }
 }
