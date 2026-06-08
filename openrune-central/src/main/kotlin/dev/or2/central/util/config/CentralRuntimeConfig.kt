@@ -119,7 +119,7 @@ fun loadCentralRuntimeConfig(): CentralRuntimeConfig {
             cfg.int(CentralConfigKey.JAV_CONFIG_HTTP_TIMEOUT_SEC, 20).coerceIn(3, 120),
 
         httpTrustProxy = resolveHttpTrustProxy(cfg),
-        discord = resolveDiscordRuntimeConfig(cfg),
+        discord = resolveDiscordRuntimeConfig(),
     )
 }
 

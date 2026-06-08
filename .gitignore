@@ -2,6 +2,7 @@
 build/
 data/
 central-config.yaml
+discord-settings.yml
 **/src/main/resources/central-config.yaml
 *.db
 *.db-wal
