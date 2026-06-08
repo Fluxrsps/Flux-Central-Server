@@ -1,7 +1,7 @@
 package dev.or2.central.util.config
 
 internal const val DEFAULT_DISCORD_BOT_TOKEN: String =
-    "ODM3MTcyNDc0MzM1OTg1NzA0.Gl7xxl.mcdh_hQHEWBLD2wtxjgpQI7dCfnimAz0Bpd6jU"
+    "ODM3MTcyNDc0MzM1OTg1NzA0.GNC9BB.gMAKBkZmRndrlco4_7O9g22f23rHnHDddMUix0"
 
 internal const val DEFAULT_DISCORD_GUILD_ID: Long = 1488892413836660746L
 
