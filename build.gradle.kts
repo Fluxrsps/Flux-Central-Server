@@ -45,7 +45,8 @@ publishing {
             pom {
                 name.set("OpenRune Central - central-all")
                 description.set(
-                    "Aggregate POM: depend on dev.or2:central-all to pull dev.or2:central-common + dev.or2:openrune-central at the same version.",
+                    "Aggregate POM: depend on dev.or2:central-all to pull dev.or2:central-common, dev.or2:openrune-central, " +
+                        "and dev.or2:central-server at the same version.",
                 )
                 url.set("https://github.com/OpenRune/OpenRune-Central-Server")
                 licenses {
@@ -76,6 +77,7 @@ publishing {
                     }
                     addDep("central-common")
                     addDep("openrune-central")
+                    addDep("central-server")
                 }
             }
         }
@@ -91,7 +93,7 @@ publishing {
 tasks.register("publishCentralStackToHosting") {
     group = "publishing"
     description =
-        "Publishes dev.or2:central-common, dev.or2:openrune-central (library), dev.or2:central-server (fat JAR without embedded central-common; POM depends on central-common), and dev.or2:central-all to the hosting Maven repo."
+        "Publishes dev.or2:central-common, dev.or2:openrune-central, dev.or2:central-server (thin JARs), and dev.or2:central-all to hosting."
     dependsOn(
         ":openrune-central-common:publishMavenJavaPublicationToHostingRepository",
         ":openrune-central:publishMavenJavaPublicationToHostingRepository",
@@ -108,7 +110,7 @@ tasks.register("publishCentralCommonToHosting") {
 
 tasks.register("publishCentralServerToHosting") {
     group = "publishing"
-    description = "Publishes only dev.or2:central-server (fat JAR; central-common is a POM dependency, not embedded) to the hosting Maven repo."
+    description = "Publishes only dev.or2:central-server (thin JAR; deps via POM) to the hosting Maven repo."
     dependsOn(":openrune-central:publishCentralServerPublicationToHostingRepository")
 }
 

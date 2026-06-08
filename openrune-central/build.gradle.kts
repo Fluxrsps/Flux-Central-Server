@@ -1,4 +1,4 @@
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import org.gradle.api.component.AdhocComponentWithVariants
 import org.gradle.language.jvm.tasks.ProcessResources
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
@@ -70,38 +70,22 @@ tasks.named<JavaExec>("run") {
     workingDir = rootProject.layout.projectDirectory.asFile
 }
 
+tasks.jar {
+    manifest {
+        attributes["Main-Class"] = application.mainClass.get()
+    }
+}
+
 tasks.shadowJar {
     archiveFileName.set("openrune-central-server.jar")
     mergeServiceFiles()
 }
 
-/**
- * Maven `dev.or2:central-server` artifact: same merge rules as [tasks.shadowJar] but excludes
- * `:openrune-central-common` from the fat JAR; consumers resolve `dev.or2:central-common` via the POM.
- *
- * [tasks.shadowJar] remains a single self-contained JAR for Docker / `-jar` workflows.
- */
-val centralServerShadowJar =
-    tasks.register<ShadowJar>("centralServerShadowJar") {
-        group = "build"
-        description =
-            "Fat JAR for Maven dev.or2:central-server (bundles third-party deps; excludes central-common)."
-        archiveClassifier.set("")
-        archiveBaseName.set("central-server")
-
-        from(sourceSets.main.get().output)
-        setConfigurations(listOf(project.configurations.getByName("runtimeClasspath")))
-
-        mergeServiceFiles()
-        manifest.from(tasks.shadowJar.get().manifest)
-
-        dependencies {
-            exclude(project(":openrune-central-common"))
-        }
+// Hosting Maven uses thin library JARs only. Shadow stays local (Docker / GitHub Releases via shadowCentralJar).
+components.named("java", AdhocComponentWithVariants::class.java) {
+    withVariantsFromConfiguration(configurations.getByName("shadowRuntimeElements")) {
+        skip()
     }
-
-tasks.build {
-    dependsOn(tasks.shadowJar)
 }
 
 // Admin SPA is not built as part of Central: run `npm run build` in openrune-central-admin-web, then rebuild Central
@@ -125,30 +109,19 @@ publishing {
             pom {
                 name.set("openrune-central")
                 description.set(
-                    "OpenRune Central (HTTP + world-server TCP link) as a library; embed in the game server or run as standalone (see application plugin / shadowJar).",
+                    "OpenRune Central (HTTP + world-server TCP link) as a library; embed in the game server.",
                 )
             }
         }
         create<MavenPublication>("centralServer") {
+            from(components["java"])
             artifactId = "central-server"
-            artifact(centralServerShadowJar)
             pom {
                 name.set("central-server")
                 description.set(
-                    "Runnable OpenRune Central fat JAR for Maven: bundles third-party libraries but not " +
-                        "dev.or2:central-common (declared as a runtime dependency). " +
-                        "For a single self-contained JAR (e.g. Docker), use :openrune-central:shadowJar → openrune-central-server.jar.",
+                    "Runnable OpenRune Central thin JAR for Maven; runtime dependencies (including dev.or2:central-common) " +
+                        "are resolved via the POM, not bundled. For a local fat JAR, use :shadowCentralJar.",
                 )
-                withXml {
-                    val projectNode = asNode()
-                    projectNode.appendNode("packaging", "jar")
-                    val dependenciesNode = projectNode.appendNode("dependencies")
-                    val d = dependenciesNode.appendNode("dependency")
-                    d.appendNode("groupId", "dev.or2")
-                    d.appendNode("artifactId", "central-common")
-                    d.appendNode("version", project.version.toString())
-                    d.appendNode("scope", "runtime")
-                }
             }
         }
     }
