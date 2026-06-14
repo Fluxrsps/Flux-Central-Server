@@ -6,7 +6,7 @@
   },
   "exported_at": "2026-05-19T00:00:00+00:00",
   "name": "OpenRune Central Server",
-  "author": "OpenRune",
+  "author": "support@openrune.io",
   "description": "OpenRune Central - Kotlin/Ktor backend for game worlds: accounts, sessions, world-link TCP auth, worlds list, jav_config proxy, and activity logs.",
   "features": [],
   "docker_images": {
@@ -196,7 +196,7 @@
       "user_viewable": true,
       "user_editable": true,
       "rules": "nullable|string|max:8192",
-      "field_type": "textarea"
+      "field_type": "text"
     },
     {
       "name": "Enable Logcleaner Module",
