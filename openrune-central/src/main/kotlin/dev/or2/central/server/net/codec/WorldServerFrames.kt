@@ -33,6 +33,8 @@ data class FrameInput(
 
     fun readUnsignedShortCompat(): Int = din.readUnsignedShort()
 
+    fun readUnsignedByteCompat(): Int = din.readUnsignedByte()
+
     fun readIntCompat(): Int = din.readInt()
 
     fun readLongCompat(): Long = din.readLong()
@@ -237,6 +239,118 @@ fun writeServerKick(
     return out.toByteArray()
 }
 
+private const val PM_RELAY_SENDER_DISPLAY_MAX_UTF8: Int = 96
+private const val PM_RELAY_MESSAGE_MAX_UTF8: Int = 255 * 4
+
+fun writeServerPrivateMessage(
+    senderWorldId: Int,
+    fromCharacterId: Int,
+    toCharacterId: Int,
+    senderDisplayName: String,
+    senderCrown: Int,
+    message: String,
+): ByteArray {
+    val senderUtf8 = utf8TruncatedTo(senderDisplayName, PM_RELAY_SENDER_DISPLAY_MAX_UTF8)
+    val messageUtf8 = utf8TruncatedTo(message, PM_RELAY_MESSAGE_MAX_UTF8)
+
+    val out = ByteArrayOutputStream()
+    val d = DataOutputStream(out)
+
+    d.writeByte(WorldServerOpcodes.OP_SERVER_PRIVATE_MESSAGE)
+    d.writeInt(senderWorldId)
+    d.writeInt(fromCharacterId)
+    d.writeInt(toCharacterId)
+    d.writeByte(senderCrown.coerceIn(0, 255))
+    d.writeShort(senderUtf8.size)
+    d.write(senderUtf8)
+    d.writeShort(messageUtf8.size)
+    d.write(messageUtf8)
+    d.flush()
+
+    return out.toByteArray()
+}
+
+fun writeSocialSyncFail(reason: Int): ByteArray =
+    byteArrayOf(
+        WorldServerOpcodes.OP_WORLD_SOCIAL_SYNC_FAIL.toByte(),
+        reason.toByte(),
+    )
+
+fun writeSocialSyncOk(
+    publicChat: Int,
+    privateChat: Int,
+    tradeChat: Int,
+    friends: List<SocialSyncFriendWire>,
+    ignores: List<SocialSyncIgnoreWire>,
+): ByteArray {
+    val out = ByteArrayOutputStream()
+    val d = DataOutputStream(out)
+
+    d.writeByte(WorldServerOpcodes.OP_WORLD_SOCIAL_SYNC_OK)
+    d.writeByte(publicChat)
+    d.writeByte(privateChat)
+    d.writeByte(tradeChat)
+
+    d.writeShort(friends.size)
+    for (friend in friends) {
+        d.writeUtf8Social(friend.displayName)
+        d.writeUtf8Social(friend.previousDisplayName ?: "")
+        d.writeInt(friend.worldId)
+    }
+
+    d.writeShort(ignores.size)
+    for (ignore in ignores) {
+        d.writeUtf8Social(ignore.displayName)
+        d.writeUtf8Social(ignore.previousDisplayName ?: "")
+    }
+
+    d.flush()
+    return out.toByteArray()
+}
+
+fun writeServerFriendPresence(
+    ownerCharacterId: Int,
+    friendCharacterId: Int,
+    friendWorldId: Int,
+    friendDisplayName: String,
+    friendPreviousDisplayName: String?,
+): ByteArray {
+    val display = utf8TruncatedTo(friendDisplayName, 96)
+    val previous = utf8TruncatedTo(friendPreviousDisplayName ?: "", 96)
+
+    val out = ByteArrayOutputStream()
+    val d = DataOutputStream(out)
+
+    d.writeByte(WorldServerOpcodes.OP_SERVER_FRIEND_PRESENCE)
+    d.writeInt(ownerCharacterId)
+    d.writeInt(friendCharacterId)
+    d.writeInt(friendWorldId)
+    d.writeShort(display.size)
+    d.write(display)
+    d.writeShort(previous.size)
+    d.write(previous)
+    d.flush()
+
+    return out.toByteArray()
+}
+
+data class SocialSyncFriendWire(
+    val displayName: String,
+    val previousDisplayName: String?,
+    val worldId: Int,
+)
+
+data class SocialSyncIgnoreWire(
+    val displayName: String,
+    val previousDisplayName: String?,
+)
+
+private fun DataOutputStream.writeUtf8Social(value: String) {
+    val utf8 = utf8TruncatedTo(value, 96)
+    writeShort(utf8.size)
+    write(utf8)
+}
+
 private const val WORLD_OPS_UTF8_MAX: Int = 2048
 
 /** Must match game [org.rsmod.api.net.central.WorldLinkFrameSpecs.PM_RELAY_SENDER_DISPLAY_MAX_UTF8]. */
@@ -303,6 +417,15 @@ fun writeServerDisplayNameSync(
     d.flush()
     return out.toByteArray()
 }
+
+fun writeSocialOk(): ByteArray =
+    byteArrayOf(WorldServerOpcodes.OP_WORLD_SOCIAL_OK.toByte())
+
+fun writeSocialFail(reason: Int): ByteArray =
+    byteArrayOf(
+        WorldServerOpcodes.OP_WORLD_SOCIAL_FAIL.toByte(),
+        reason.toByte(),
+    )
 
 fun writeServerBroadcast(
     worldScope: Int,

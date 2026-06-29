@@ -52,6 +52,31 @@ class WorldSessionRepository(
         }
     }
 
+    fun deleteStaleReturning(beforeMillis: Long): List<SessionRow> {
+        val sql =
+            """
+        DELETE FROM sessions
+        WHERE last_seen_at < ?
+        RETURNING id, account_id, world_id, character_id, token_hash, created_at, last_seen_at
+        """.trimIndent()
+
+        return dataSource.connection.use { conn ->
+            conn.prepareStatement(sql).use { ps ->
+                ps.setLong(1, beforeMillis)
+
+                ps.executeQuery().use { rs ->
+                    val out = mutableListOf<SessionRow>()
+
+                    while (rs.next()) {
+                        out += readRow(rs)
+                    }
+
+                    out
+                }
+            }
+        }
+    }
+
     fun findDistinctWorldIdsByAccount(accountId: Long): List<Int> {
         val sql = OpenRuneSql.text("central/session/select_distinct_world_ids_by_account.sql")
         return dataSource.connection.use { conn ->

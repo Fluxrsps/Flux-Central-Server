@@ -28,6 +28,22 @@ object WorldServerOpcodes {
 
     /** World-link push: account discord_id changed in Central DB (see NOTIFY `account_discord_id_events`). */
     const val OP_SERVER_DISCORD_ID_SYNC: Int = 0x56
+    const val OP_WORLD_PM_RELAY = 0x60
+    const val OP_WORLD_FRIEND_ADD = 0x61
+    const val OP_WORLD_FRIEND_DEL = 0x62
+    const val OP_WORLD_IGNORE_ADD = 0x63
+    const val OP_WORLD_IGNORE_DEL = 0x64
+    const val OP_WORLD_CHAT_FILTERS = 0x65
+
+    const val OP_WORLD_SOCIAL_OK = 0x66
+    const val OP_WORLD_SOCIAL_FAIL = 0x67
+
+    const val OP_WORLD_SOCIAL_SYNC = 0x69
+    const val OP_WORLD_SOCIAL_SYNC_OK = 0x6A
+    const val OP_WORLD_SOCIAL_SYNC_FAIL = 0x6B
+
+    const val OP_SERVER_PRIVATE_MESSAGE = 0x68
+    const val OP_SERVER_FRIEND_PRESENCE = 0x6C
 
     /** World-link push: account character display_name changed in Central DB (see NOTIFY `character_display_name_events`). */
     const val OP_SERVER_DISPLAY_NAME_SYNC: Int = 0x57
@@ -100,6 +116,15 @@ object WorldServerOpcodes {
     const val LOGIN_FAIL_WORLD_MIN_LEVEL: Int = 13
     const val LOGIN_FAIL_WORLD_WHITELIST: Int = 14
     const val LOGIN_FAIL_WORLD_RIGHTS: Int = 15
+
+    const val SOCIAL_FAIL_USER_NOT_FOUND = 1
+    const val SOCIAL_FAIL_SELF_ACTION = 2
+    const val SOCIAL_FAIL_ALREADY_FRIEND = 3
+    const val SOCIAL_FAIL_ALREADY_IGNORED = 4
+    const val SOCIAL_FAIL_NOT_ACCEPTING_PRIVATE = 5
+    const val SOCIAL_FAIL_NOT_LOGGED_IN = 6
+    const val SOCIAL_FAIL_LIST_FULL = 7
+    const val SOCIAL_FAIL_NOT_ALLOWED = 8
 
     /**
      * Reserved numeric code for account / display-name policy (profanity, deceptive fragments, format).

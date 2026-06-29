@@ -31,6 +31,7 @@ import dev.or2.central.server.console.CentralRefreshStep
 import dev.or2.central.server.console.startCentralConsoleReader
 import dev.or2.central.server.session.WorldSessionRepository
 import dev.or2.central.server.telemetry.WorldServerTelemetry
+import dev.or2.central.social.CentralSocialRepository
 import java.util.concurrent.atomic.AtomicBoolean
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -85,18 +86,22 @@ fun Application.installOpenRuneCentral(centralConfig: CentralRuntimeConfig) {
     val worldServerPushChannelRegistry = WorldServerPushChannelRegistry()
 
     val discord = DiscordRuntime.create(dataSource, centralConfig.discord, sessionRepository)
-    val worldServerDiscordLinkHandler =
-        WorldServerDiscordLinkHandler(
-            linkService = discord.linkService,
-            messenger = discord.linkMessenger,
-            discordConfig = centralConfig.discord,
-        )
+    val worldServerDiscordLinkHandler = WorldServerDiscordLinkHandler(
+        linkService = discord.linkService,
+        messenger = discord.linkMessenger,
+        discordConfig = centralConfig.discord
+    )
+
+    val centralSocialRepository = CentralSocialRepository(dataSource)
+
 
     val worldServerSessionService =
         WorldServerSessionService(
             dataSource = dataSource,
             worldRepository = worldRepository,
             worldKeyVerifier = worldKeyVerifier,
+            socialRepository = centralSocialRepository,
+            worldServerPushChannelRegistry = worldServerPushChannelRegistry,
             accountRepository = accountRepository,
             passwordHasher = passwordHasher,
             sessionRepository = sessionRepository,
@@ -151,6 +156,8 @@ fun Application.installOpenRuneCentral(centralConfig: CentralRuntimeConfig) {
     val staleSessionSweeper =
         WorldSessionReaper(
             sessionRepository = sessionRepository,
+            socialRepository = centralSocialRepository,
+            worldServerPushChannelRegistry = worldServerPushChannelRegistry,
             worldListCache = worldListCache,
             ttlMillis = centralConfig.sessionsTtlMillis,
             scheduler = scheduler,

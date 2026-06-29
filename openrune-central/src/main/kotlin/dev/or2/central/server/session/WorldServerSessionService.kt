@@ -17,6 +17,15 @@ import dev.or2.central.server.net.codec.writeLoginFail
 import dev.or2.central.server.net.codec.writeLoginOk
 import dev.or2.central.server.net.codec.writeLogoutAck
 import dev.or2.central.server.net.codec.writePushSubscribeAck
+import dev.or2.central.server.net.codec.writeSocialFail
+import dev.or2.central.server.net.codec.writeSocialOk
+import dev.or2.central.social.CentralSocialRepository
+import dev.or2.central.server.net.codec.writeServerPrivateMessage
+import dev.or2.central.server.net.push.WorldServerPushChannelRegistry
+import dev.or2.central.server.net.codec.SocialSyncFriendWire
+import dev.or2.central.server.net.codec.SocialSyncIgnoreWire
+import dev.or2.central.server.net.codec.writeSocialSyncFail
+import dev.or2.central.server.net.codec.writeSocialSyncOk
 import dev.or2.central.server.net.protocol.WorldServerOpcodes
 import dev.or2.central.server.telemetry.WorldServerTelemetry
 import dev.or2.central.account.PunishmentLoginBlock
@@ -27,7 +36,10 @@ import dev.or2.central.http.world.WorldLoginGateRepository
 import dev.or2.central.http.world.WorldRepository
 import dev.or2.central.WorldOperationRepository
 import dev.or2.central.server.net.codec.WorldServerInboundFrameSpecs
+import dev.or2.central.server.net.codec.writeServerFriendPresence
 import dev.or2.sql.OpenRuneSql
+import io.netty.buffer.Unpooled
+import io.netty.channel.Channel
 import java.security.SecureRandom
 import java.sql.Connection
 import java.sql.Types
@@ -38,6 +50,8 @@ class WorldServerSessionService(
     private val dataSource: DataSource,
     private val worldRepository: WorldRepository,
     private val worldKeyVerifier: WorldKeyVerifier,
+    private val socialRepository: CentralSocialRepository,
+    private val worldServerPushChannelRegistry: WorldServerPushChannelRegistry,
     private val accountRepository: AccountRepository,
     private val passwordHasher: PasswordHasher,
     private val sessionRepository: WorldSessionRepository,
@@ -84,6 +98,13 @@ class WorldServerSessionService(
             WorldServerOpcodes.OP_GAME_DISCORD_LINK_PENDING -> handleGameDiscordLinkPending(state, input)
             WorldServerOpcodes.OP_GAME_DISCORD_LINK_INVALIDATE -> handleGameDiscordLinkInvalidate(state, input)
             WorldServerOpcodes.OP_GAME_ANNOUNCEMENT -> handleGameAnnouncement(state, input)
+            WorldServerOpcodes.OP_WORLD_PM_RELAY -> handleWorldPmRelay(state, input)
+            WorldServerOpcodes.OP_WORLD_FRIEND_ADD -> handleSocialNameAction(state, input)
+            WorldServerOpcodes.OP_WORLD_FRIEND_DEL -> handleSocialNameAction(state, input)
+            WorldServerOpcodes.OP_WORLD_IGNORE_ADD -> handleSocialNameAction(state, input)
+            WorldServerOpcodes.OP_WORLD_IGNORE_DEL -> handleSocialNameAction(state, input)
+            WorldServerOpcodes.OP_WORLD_CHAT_FILTERS -> handleChatFilters(state, input)
+            WorldServerOpcodes.OP_WORLD_SOCIAL_SYNC -> handleSocialSync(state, input)
             else -> {
                 telemetry.recordInboundRejected(input.opcode, "unhandled_opcode")
                 if (!state.handshakeDone) {
@@ -328,6 +349,13 @@ class WorldServerSessionService(
         }
         worldListCache?.rebuild()
         telemetry.recordLoginSuccess()
+        effectiveCharId?.let {
+            fanoutFriendPresence(
+                friendCharacterId = it,
+                onlineWorldId = state.worldId,
+                displayedWorldId = state.worldId,
+            )
+        }
         val rightsForGame = effectiveRightsForWorldLogin(state.realmDevMode, accounts.rights)
         return WorldServerHandleResult.Reply(
             writeLoginOk(token, accounts.id, rightsForGame, state.protocolVersion),
@@ -431,10 +459,457 @@ class WorldServerSessionService(
         if (row.worldId != state.worldId) {
             return failBadToken()
         }
+        row.characterId?.let {
+            fanoutFriendPresence(
+                friendCharacterId = it,
+                onlineWorldId = row.worldId,
+                displayedWorldId = 0,
+            )
+        }
         sessionRepository.deleteById(row.id)
         worldListCache?.rebuild()
         return WorldServerHandleResult.Reply(writeLogoutAck(), closeAfterWrite = true)
     }
+
+    private fun handleWorldPmRelay(
+        state: WorldServerConnectionState,
+        input: FrameInput,
+    ): WorldServerHandleResult {
+        if (!state.handshakeDone) {
+            return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+        }
+
+        val token = readSessionTokenForSocial(input)
+            ?: return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+
+        val row = sessionRepository.findByTokenHash(sha256(token))
+            ?: return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+
+        if (row.worldId != state.worldId) {
+            return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+        }
+
+        sessionRepository.touchById(row.id, System.currentTimeMillis())
+
+        val fromCharacterId = input.readIntCompat()
+        val senderCrown = input.readUnsignedByteCompat()
+        val targetName = input.readUtf8LenPrefixed().trim()
+        val senderDisplayName = input.readUtf8LenPrefixed().trim()
+        val message = input.readUtf8LenPrefixed().trim()
+
+        if (row.characterId != null && row.characterId != fromCharacterId) {
+            return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+        }
+
+        if (input.trailingUnreadBytes() != 0 || fromCharacterId <= 0 || targetName.isBlank() || message.isBlank()) {
+            return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+        }
+
+        val target = socialRepository.findCharacterByDisplayName(targetName)
+            ?: return socialFail(WorldServerOpcodes.SOCIAL_FAIL_USER_NOT_FOUND)
+
+        if (target.characterId == fromCharacterId) {
+            return socialFail(WorldServerOpcodes.SOCIAL_FAIL_SELF_ACTION)
+        }
+
+        if (socialRepository.isIgnored(target.characterId, fromCharacterId)) {
+            return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ACCEPTING_PRIVATE)
+        }
+
+        val filters = socialRepository.chatFilters(target.characterId)
+
+        // OSRS-style assumption: 0 = on, 1 = friends, 2 = off.
+        if (filters.privateChat >= 2) {
+            return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ACCEPTING_PRIVATE)
+        }
+
+        if (filters.privateChat == 1 && !socialRepository.isFriend(target.characterId, fromCharacterId)) {
+            return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ACCEPTING_PRIVATE)
+        }
+
+        val targetSession = socialRepository.onlineSessionForCharacter(target.characterId)
+            ?: return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_LOGGED_IN)
+
+        val targetChannel = worldServerPushChannelRegistry.channel(targetSession.worldId)
+            ?: return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_LOGGED_IN)
+
+        val frame =
+            writeServerPrivateMessage(
+                senderWorldId = state.worldId,
+                fromCharacterId = fromCharacterId,
+                toCharacterId = target.characterId,
+                senderDisplayName = senderDisplayName.ifBlank { "Player" },
+                senderCrown = senderCrown,
+                message = message,
+            )
+
+        writePushFrame(targetChannel, frame)
+
+        return WorldServerHandleResult.Reply(writeSocialOk())
+    }
+
+    private fun handleSocialNameAction(
+        state: WorldServerConnectionState,
+        input: FrameInput,
+    ): WorldServerHandleResult {
+        if (!state.handshakeDone) {
+            return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+        }
+
+        val token = readSessionTokenForSocial(input)
+            ?: return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+
+        val row = sessionRepository.findByTokenHash(sha256(token))
+            ?: return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+
+        if (row.worldId != state.worldId) {
+            return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+        }
+
+        sessionRepository.touchById(row.id, System.currentTimeMillis())
+
+        val characterId = input.readIntCompat()
+        val targetName = input.readUtf8LenPrefixed().trim()
+
+        if (row.characterId != null && row.characterId != characterId) {
+            return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+        }
+
+        if (input.trailingUnreadBytes() != 0 || characterId <= 0 || targetName.isBlank()) {
+            return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+        }
+
+        val target = socialRepository.findCharacterByDisplayName(targetName)
+            ?: return socialFail(WorldServerOpcodes.SOCIAL_FAIL_USER_NOT_FOUND)
+
+        if (target.characterId == characterId) {
+            return socialFail(WorldServerOpcodes.SOCIAL_FAIL_SELF_ACTION)
+        }
+
+        return when (input.opcode) {
+            WorldServerOpcodes.OP_WORLD_FRIEND_ADD -> {
+                if (socialRepository.isFriend(characterId, target.characterId)) {
+                    socialFail(WorldServerOpcodes.SOCIAL_FAIL_ALREADY_FRIEND)
+                } else if (socialRepository.isIgnored(characterId, target.characterId)) {
+                    socialFail(WorldServerOpcodes.SOCIAL_FAIL_ALREADY_IGNORED)
+                } else {
+                    val beforeVisible =
+                        visiblePresenceRecipients(
+                            friendCharacterId = characterId,
+                            onlineWorldId = row.worldId,
+                        )
+
+                    socialRepository.addFriend(characterId, target.characterId)
+
+                    val afterVisible =
+                        visiblePresenceRecipients(
+                            friendCharacterId = characterId,
+                            onlineWorldId = row.worldId,
+                        )
+
+                    sendPresenceVisibilityChanges(beforeVisible, afterVisible)
+
+                    WorldServerHandleResult.Reply(writeSocialOk())
+                }
+            }
+
+            WorldServerOpcodes.OP_WORLD_FRIEND_DEL -> {
+                val beforeVisible =
+                    visiblePresenceRecipients(
+                        friendCharacterId = characterId,
+                        onlineWorldId = row.worldId,
+                    )
+
+                socialRepository.deleteFriend(characterId, target.characterId)
+
+                val afterVisible =
+                    visiblePresenceRecipients(
+                        friendCharacterId = characterId,
+                        onlineWorldId = row.worldId,
+                    )
+
+                sendPresenceVisibilityChanges(beforeVisible, afterVisible)
+
+                WorldServerHandleResult.Reply(writeSocialOk())
+            }
+
+            WorldServerOpcodes.OP_WORLD_IGNORE_ADD -> {
+                if (socialRepository.isIgnored(characterId, target.characterId)) {
+                    socialFail(WorldServerOpcodes.SOCIAL_FAIL_ALREADY_IGNORED)
+                } else if (socialRepository.isFriend(characterId, target.characterId)) {
+                    socialFail(WorldServerOpcodes.SOCIAL_FAIL_ALREADY_FRIEND)
+                } else {
+                    val beforeVisible =
+                        visiblePresenceRecipients(
+                            friendCharacterId = characterId,
+                            onlineWorldId = row.worldId,
+                        )
+
+                    socialRepository.addIgnore(characterId, target.characterId)
+
+                    val afterVisible =
+                        visiblePresenceRecipients(
+                            friendCharacterId = characterId,
+                            onlineWorldId = row.worldId,
+                        )
+
+                    sendPresenceVisibilityChanges(beforeVisible, afterVisible)
+
+                    WorldServerHandleResult.Reply(writeSocialOk())
+                }
+            }
+
+            WorldServerOpcodes.OP_WORLD_IGNORE_DEL -> {
+                val beforeVisible =
+                    visiblePresenceRecipients(
+                        friendCharacterId = characterId,
+                        onlineWorldId = row.worldId,
+                    )
+
+                socialRepository.deleteIgnore(characterId, target.characterId)
+
+                val afterVisible =
+                    visiblePresenceRecipients(
+                        friendCharacterId = characterId,
+                        onlineWorldId = row.worldId,
+                    )
+
+                sendPresenceVisibilityChanges(beforeVisible, afterVisible)
+
+                WorldServerHandleResult.Reply(writeSocialOk())
+            }
+
+            else -> socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+        }
+    }
+
+    // Central social only owns private-chat visibility. Public/trade bytes are still
+    // consumed to keep the world-link frame aligned with the client packet shape.
+    private fun handleChatFilters(
+        state: WorldServerConnectionState,
+        input: FrameInput,
+    ): WorldServerHandleResult {
+        if (!state.handshakeDone) {
+            return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+        }
+
+        val token = readSessionTokenForSocial(input)
+            ?: return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+
+        val row = sessionRepository.findByTokenHash(sha256(token))
+            ?: return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+
+        if (row.worldId != state.worldId) {
+            return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+        }
+
+        sessionRepository.touchById(row.id, System.currentTimeMillis())
+
+        val characterId = input.readIntCompat()
+        input.readUnsignedByteCompat() // public chat; owned by the game server, ignored here
+        val privateChat = input.readUnsignedByteCompat()
+        input.readUnsignedByteCompat() // trade chat; owned by trade/social systems later, ignored here
+
+        if (row.characterId != null && row.characterId != characterId) {
+            return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+        }
+
+        if (input.trailingUnreadBytes() != 0 || characterId <= 0) {
+            return socialFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+        }
+
+        val beforeVisible =
+            visiblePresenceRecipients(
+                friendCharacterId = characterId,
+                onlineWorldId = row.worldId,
+            )
+
+        socialRepository.setPrivateChatFilter(
+            characterId = characterId,
+            privateChat = privateChat,
+        )
+
+        val afterVisible =
+            visiblePresenceRecipients(
+                friendCharacterId = characterId,
+                onlineWorldId = row.worldId,
+            )
+
+        sendPresenceVisibilityChanges(beforeVisible, afterVisible)
+
+        return WorldServerHandleResult.Reply(writeSocialOk())
+    }
+
+    private fun readSessionTokenForSocial(input: FrameInput): ByteArray? {
+        val tokenLen = input.readUnsignedShortCompat()
+        if (tokenLen != WorldServerOpcodes.TOKEN_BYTES) {
+            return null
+        }
+        return input.readFully(tokenLen)
+    }
+
+    private fun handleSocialSync(
+        state: WorldServerConnectionState,
+        input: FrameInput,
+    ): WorldServerHandleResult {
+        if (!state.handshakeDone) {
+            return WorldServerHandleResult.Reply(
+                writeSocialSyncFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+            )
+        }
+
+        val token = readSessionTokenForSocial(input)
+            ?: return WorldServerHandleResult.Reply(
+                writeSocialSyncFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+            )
+
+        val row = sessionRepository.findByTokenHash(sha256(token))
+            ?: return WorldServerHandleResult.Reply(
+                writeSocialSyncFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+            )
+
+        if (row.worldId != state.worldId) {
+            return WorldServerHandleResult.Reply(
+                writeSocialSyncFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+            )
+        }
+
+        sessionRepository.touchById(row.id, System.currentTimeMillis())
+
+        val characterId = input.readIntCompat()
+
+        if (row.characterId != null && row.characterId != characterId) {
+            return WorldServerHandleResult.Reply(
+                writeSocialSyncFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+            )
+        }
+
+        if (input.trailingUnreadBytes() != 0 || characterId <= 0) {
+            return WorldServerHandleResult.Reply(
+                writeSocialSyncFail(WorldServerOpcodes.SOCIAL_FAIL_NOT_ALLOWED)
+            )
+        }
+
+        val snapshot = socialRepository.snapshot(characterId)
+
+        return WorldServerHandleResult.Reply(
+            writeSocialSyncOk(
+                publicChat = snapshot.filters.publicChat,
+                privateChat = snapshot.filters.privateChat,
+                tradeChat = snapshot.filters.tradeChat,
+                friends =
+                    snapshot.friends.map {
+                        SocialSyncFriendWire(
+                            displayName = it.displayName,
+                            previousDisplayName = it.previousDisplayName,
+                            worldId = it.worldId,
+                        )
+                    },
+                ignores =
+                    snapshot.ignores.map {
+                        SocialSyncIgnoreWire(
+                            displayName = it.displayName,
+                            previousDisplayName = it.previousDisplayName,
+                        )
+                    },
+            )
+        )
+    }
+
+    private fun fanoutFriendPresence(
+        friendCharacterId: Int,
+        onlineWorldId: Int,
+        displayedWorldId: Int,
+    ) {
+        val recipients =
+            socialRepository.friendPresenceRecipients(
+                friendCharacterId = friendCharacterId,
+                onlineWorldId = onlineWorldId,
+            )
+
+        for (recipient in recipients) {
+            if (recipient.visibleWorldId <= 0) {
+                continue
+            }
+
+            sendFriendPresence(
+                recipient = recipient,
+                displayedWorldId = if (displayedWorldId > 0) recipient.visibleWorldId else 0,
+            )
+        }
+    }
+
+    private fun writePushFrame(
+        channel: Channel,
+        frame: ByteArray,
+    ) {
+        channel.eventLoop().execute {
+            if (!channel.isActive) {
+                return@execute
+            }
+
+            channel.writeAndFlush(Unpooled.wrappedBuffer(frame))
+        }
+    }
+
+    private fun sendFriendPresence(
+        recipient: dev.or2.central.social.FriendPresenceRecipientRow,
+        displayedWorldId: Int,
+    ) {
+        val channel = worldServerPushChannelRegistry.channel(recipient.ownerWorldId) ?: return
+
+        val frame =
+            writeServerFriendPresence(
+                ownerCharacterId = recipient.ownerCharacterId,
+                friendCharacterId = recipient.friendCharacterId,
+                friendWorldId = displayedWorldId,
+                friendDisplayName = recipient.friendDisplayName,
+                friendPreviousDisplayName = recipient.friendPreviousDisplayName,
+            )
+
+        writePushFrame(channel, frame)
+    }
+
+    private fun visiblePresenceRecipients(
+        friendCharacterId: Int,
+        onlineWorldId: Int,
+    ): Map<Int, dev.or2.central.social.FriendPresenceRecipientRow> {
+        val recipients =
+            socialRepository.friendPresenceRecipients(
+                friendCharacterId = friendCharacterId,
+                onlineWorldId = onlineWorldId,
+            )
+
+        return recipients
+            .filter { recipient -> recipient.visibleWorldId > 0 }
+            .associateBy { recipient -> recipient.ownerCharacterId }
+    }
+
+    private fun sendPresenceVisibilityChanges(
+        beforeVisible: Map<Int, dev.or2.central.social.FriendPresenceRecipientRow>,
+        afterVisible: Map<Int, dev.or2.central.social.FriendPresenceRecipientRow>,
+    ) {
+        for ((ownerCharacterId, before) in beforeVisible) {
+            if (ownerCharacterId !in afterVisible) {
+                sendFriendPresence(
+                    recipient = before,
+                    displayedWorldId = 0,
+                )
+            }
+        }
+
+        for ((ownerCharacterId, after) in afterVisible) {
+            if (ownerCharacterId !in beforeVisible) {
+                sendFriendPresence(
+                    recipient = after,
+                    displayedWorldId = after.visibleWorldId,
+                )
+            }
+        }
+    }
+
+    private fun socialFail(reason: Int): WorldServerHandleResult.Reply =
+        WorldServerHandleResult.Reply(writeSocialFail(reason))
 
     private fun failBadToken(): WorldServerHandleResult.Reply =
         WorldServerHandleResult.Reply(writeLoginFail(WorldServerOpcodes.LOGIN_FAIL_BAD_TOKEN))

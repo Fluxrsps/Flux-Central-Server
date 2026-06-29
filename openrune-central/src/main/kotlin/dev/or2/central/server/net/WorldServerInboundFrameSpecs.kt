@@ -13,6 +13,30 @@ object WorldServerInboundFrameSpecs {
     const val LOGIN_PASSWORD_MAX_UTF8: Int = 256 * 4
     const val TOKEN_BYTES: Int = WorldServerOpcodes.TOKEN_BYTES
 
+    private const val TOKEN_BODY_BYTES: Int = 2 + TOKEN_BYTES
+
+    private const val SOCIAL_NAME_MAX_UTF8: Int = 96
+    private const val PRIVATE_MESSAGE_MAX_CHARS: Int = 255
+    private const val PM_RELAY_SENDER_DISPLAY_MAX_UTF8: Int = 96
+    private const val PM_RELAY_MESSAGE_MAX_UTF8: Int = PRIVATE_MESSAGE_MAX_CHARS * 4
+
+    private const val SOCIAL_SYNC_BODY_BYTES: Int = TOKEN_BODY_BYTES + 4
+
+    private const val SOCIAL_NAME_ACTION_MIN_BODY: Int = TOKEN_BODY_BYTES + 4 + 2 + 0
+    private const val SOCIAL_NAME_ACTION_MAX_BODY: Int = TOKEN_BODY_BYTES + 4 + 2 + SOCIAL_NAME_MAX_UTF8
+
+    private const val CHAT_FILTERS_BODY_BYTES: Int = TOKEN_BODY_BYTES + 4 + 3
+
+    private const val PM_RELAY_MIN_BODY: Int = TOKEN_BODY_BYTES + 4 + 1 + 2 + 0 + 2 + 0 + 2 + 0
+
+    private const val PM_RELAY_MAX_BODY: Int =
+        TOKEN_BODY_BYTES +
+                4 +
+                1 +
+                2 + SOCIAL_NAME_MAX_UTF8 +
+                2 + PM_RELAY_SENDER_DISPLAY_MAX_UTF8 +
+                2 + PM_RELAY_MESSAGE_MAX_UTF8
+
     // ===== Helper =====
     data class InboundSpec(
         val opcode: Int,
@@ -56,6 +80,54 @@ object WorldServerInboundFrameSpecs {
             name = "LOGOUT",
             minBody = 2 + TOKEN_BYTES,
             maxBody = 2 + TOKEN_BYTES
+        ),
+        InboundSpec(
+            opcode = WorldServerOpcodes.OP_WORLD_PM_RELAY,
+            name = "WORLD_PM_RELAY",
+            minBody = PM_RELAY_MIN_BODY,
+            maxBody = PM_RELAY_MAX_BODY,
+        ),
+
+        InboundSpec(
+            opcode = WorldServerOpcodes.OP_WORLD_FRIEND_ADD,
+            name = "WORLD_FRIEND_ADD",
+            minBody = SOCIAL_NAME_ACTION_MIN_BODY,
+            maxBody = SOCIAL_NAME_ACTION_MAX_BODY,
+        ),
+
+        InboundSpec(
+            opcode = WorldServerOpcodes.OP_WORLD_FRIEND_DEL,
+            name = "WORLD_FRIEND_DEL",
+            minBody = SOCIAL_NAME_ACTION_MIN_BODY,
+            maxBody = SOCIAL_NAME_ACTION_MAX_BODY,
+        ),
+
+        InboundSpec(
+            opcode = WorldServerOpcodes.OP_WORLD_IGNORE_ADD,
+            name = "WORLD_IGNORE_ADD",
+            minBody = SOCIAL_NAME_ACTION_MIN_BODY,
+            maxBody = SOCIAL_NAME_ACTION_MAX_BODY,
+        ),
+
+        InboundSpec(
+            opcode = WorldServerOpcodes.OP_WORLD_IGNORE_DEL,
+            name = "WORLD_IGNORE_DEL",
+            minBody = SOCIAL_NAME_ACTION_MIN_BODY,
+            maxBody = SOCIAL_NAME_ACTION_MAX_BODY,
+        ),
+
+        InboundSpec(
+            opcode = WorldServerOpcodes.OP_WORLD_CHAT_FILTERS,
+            name = "WORLD_CHAT_FILTERS",
+            minBody = CHAT_FILTERS_BODY_BYTES,
+            maxBody = CHAT_FILTERS_BODY_BYTES,
+        ),
+
+        InboundSpec(
+            opcode = WorldServerOpcodes.OP_WORLD_SOCIAL_SYNC,
+            name = "WORLD_SOCIAL_SYNC",
+            minBody = SOCIAL_SYNC_BODY_BYTES,
+            maxBody = SOCIAL_SYNC_BODY_BYTES,
         ),
 
         InboundSpec(
