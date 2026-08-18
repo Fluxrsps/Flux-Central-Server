@@ -4,8 +4,8 @@ CREATE TABLE IF NOT EXISTS realms (
     description TEXT,
     login_message TEXT,
     login_broadcast TEXT,
-    spawn_coord TEXT NOT NULL DEFAULT '0_50_50_21_18',
-    respawn_coord TEXT NOT NULL DEFAULT '0_50_50_21_18',
+    spawn_coord TEXT NOT NULL DEFAULT '0_19_36_38_15',
+    respawn_coord TEXT NOT NULL DEFAULT '0_19_36_38_15',
     dev_mode INTEGER NOT NULL DEFAULT 0, -- when 1: LOGIN_OK always ADMIN (gates still use accounts.rights)
     require_registration INTEGER NOT NULL DEFAULT 1,
     auto_assign_display_names INTEGER NOT NULL DEFAULT 0,
