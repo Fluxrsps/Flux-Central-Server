@@ -1,9 +1,5 @@
 /* Move email, 2FA, known device from account_characters to accounts. Drop realm_id from account_characters.
    Rename accounts.login_username to account_name. Align world_login_whitelist column name. */ALTER TABLE accounts ADD COLUMN IF NOT EXISTS email TEXT;
-ALTER TABLE accounts ADD COLUMN IF NOT EXISTS twofa_enabled BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE accounts ADD COLUMN IF NOT EXISTS twofa_secret TEXT;
-ALTER TABLE accounts ADD COLUMN IF NOT EXISTS twofa_last_verified TIMESTAMP;
-ALTER TABLE accounts ADD COLUMN IF NOT EXISTS known_device INTEGER;
 
 DO $$
 BEGIN
@@ -16,19 +12,11 @@ BEGIN
     ) THEN
         UPDATE accounts a
         SET
-            email = s.email,
-            twofa_enabled = s.twofa_enabled,
-            twofa_secret = s.twofa_secret,
-            twofa_last_verified = s.twofa_last_verified,
-            known_device = s.known_device
+            email = s.email
         FROM (
             SELECT DISTINCT ON (account_id)
                 account_id,
-                email,
-                twofa_enabled,
-                twofa_secret,
-                twofa_last_verified,
-                known_device
+                email
             FROM account_characters
             ORDER BY account_id, id
         ) s
