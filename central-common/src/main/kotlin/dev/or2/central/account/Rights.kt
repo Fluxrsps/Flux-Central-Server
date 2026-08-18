@@ -1,12 +1,17 @@
 package dev.or2.central.account
 
-public enum class Rights(
-    public val clientCode: Int,
-    public val level: Int,
+enum class Rights(
+    val icon: Int,
+    val clientCode: Int,
+    val useModIconSprites: Boolean,
+    val level: Int
 ) {
-    NONE(0, 0),
-    MOD(1, 2),
-    ADMINISTRATOR(2, 3),
+    NONE(-1,0,true,0),
+    SUPPORT(1,1,true,1),
+    MOD(0,1,true,2),
+    ADMINISTRATOR(1,2,true,3),
+    DEVELOPER(1,2,true,4),
+    MANAGER(1,2,true,5);
     ;
 
     public fun isAtLeast(other: Rights): Boolean = level >= other.level
@@ -17,7 +22,6 @@ public enum class Rights(
 
     public fun isOneOf(vararg privileges: Rights): Boolean = this in privileges
 
-    /** Rights sent on LOGIN_OK (dev realms always get [ADMINISTRATOR]). */
     public fun forWire(realmDevMode: Boolean = false): Rights = if (realmDevMode) ADMINISTRATOR else this
 
     public fun wireName(realmDevMode: Boolean = false): String {

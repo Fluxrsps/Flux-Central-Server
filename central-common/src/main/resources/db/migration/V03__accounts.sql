@@ -4,6 +4,12 @@ CREATE TABLE IF NOT EXISTS accounts (
     password_hash TEXT NOT NULL,
     rights TEXT NOT NULL DEFAULT '',
     email TEXT,
+    email_verified_at TIMESTAMP,
+    two_factor_secret TEXT,
+    two_factor_recovery_codes TEXT,
+    two_factor_confirmed_at TIMESTAMP,
+    remember_token VARCHAR(100),
+    discord_id TEXT,
     twofa_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     twofa_secret TEXT,
     twofa_last_verified TIMESTAMP,
@@ -13,3 +19,22 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_accounts_account_name_lower ON accounts ((lower(account_name)));
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    email TEXT NOT NULL,
+    token TEXT NOT NULL,
+    created_at TIMESTAMP,
+    PRIMARY KEY (email)
+);
+
+CREATE TABLE IF NOT EXISTS laravel_sessions (
+    id VARCHAR(255) PRIMARY KEY,
+    user_id BIGINT,
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    payload TEXT NOT NULL,
+    last_activity INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_laravel_sessions_user_id ON laravel_sessions (user_id);
+CREATE INDEX IF NOT EXISTS idx_laravel_sessions_last_activity ON laravel_sessions (last_activity);

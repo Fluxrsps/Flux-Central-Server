@@ -27,6 +27,7 @@ class CompositePasswordHasher(
     override fun hash(plainPassword: String): String =
         when (defaultAlgorithm.lowercase()) {
             "bcrypt" -> hashBcrypt(plainPassword)
+            "bcrypt2y" -> hashBcrypt2Y(plainPassword)
             else -> hashArgon2(plainPassword)
         }
 
@@ -40,9 +41,13 @@ class CompositePasswordHasher(
         }
     }
 
+    private fun hashBcrypt2Y(plainPassword: String): String =
+            BCrypt.with(BCrypt.Version.VERSION_2Y)
+           .hashToString(cost, plainPassword.toCharArray())
+
     override fun shouldUpgrade(storedHash: String): Boolean {
         val h = storedHash.trim()
-        if (defaultAlgorithm.lowercase() == "bcrypt" && h.startsWith("\$argon2")) {
+        if (defaultAlgorithm.lowercase() in setOf("bcrypt", "bcrypt2y") && h.startsWith("\$argon2")) {
             return true
         }
         val params = parseArgon2Params(storedHash) ?: return false

@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS account_characters (
     x INTEGER NOT NULL DEFAULT 3200,
     z INTEGER NOT NULL DEFAULT 3200,
     level INTEGER NOT NULL DEFAULT 0,
+    donator_rank TEXT NULL,
+    game_mode TEXT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_login TIMESTAMP,
     last_logout TIMESTAMP,

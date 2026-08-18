@@ -8,7 +8,6 @@ public data class CharacterData(
     public val previousDisplayName: String?,
     public val displayNameChangedAtMillis: Long?,
     public val members: Boolean,
-    public val modLevel: String?,
     public val worldId: Int?,
     public val coordX: Int,
     public val coordZ: Int,
@@ -24,6 +23,8 @@ public data class CharacterData(
     public val attrs: Map<String, Any>,
     public val onlineCentralWorldId: Int? = null,
     public val onlineSessionHeartbeat: LocalDateTime? = null,
+    public val gameMode: GameModes,
+    public val donatorRank: DonatorRanks
 )
 
 /**
@@ -35,6 +36,7 @@ public data class AccountData(
     public val rights: Rights,
     public val email: String?,
     public val discordId: Long? = null,
+    public val knownDevice: Int? = null,
     public val trustedDevices: List<TrustedDeviceData> = emptyList(),
     public val twoFactorAuth: TwoFactorAuthData = TwoFactorAuthData(),
     public val characterData: CharacterData,

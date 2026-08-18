@@ -9,9 +9,10 @@
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$" />
-            <option value="$PROJECT_DIR$/openrune-central" />
+            <option value="$PROJECT_DIR$/central-app" />
+            <option value="$PROJECT_DIR$/central-common" />
+            <option value="$PROJECT_DIR$/central-worldlink" />
             <option value="$PROJECT_DIR$/openrune-central-admin-web" />
-            <option value="$PROJECT_DIR$/openrune-central-common" />
           </set>
         </option>
       </GradleProjectSettings>
