@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     twofa_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     twofa_secret TEXT,
     twofa_last_verified TIMESTAMP,
+    known_device INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
