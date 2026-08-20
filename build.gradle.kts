@@ -13,7 +13,7 @@ val hostingDirectory: File =
     System.getenv("HOSTING_DIRECTORY")?.let { File(it) }
         ?: File("D:\\RSPS\\Fluxious\\hosting")
 
-val buildNumber = System.getenv("BUILD_NUMBER") ?: "flux-3.0.0"
+val buildNumber = System.getenv("BUILD_NUMBER") ?: "flux-3.0.1"
 
 
 val centralPublishModules =
