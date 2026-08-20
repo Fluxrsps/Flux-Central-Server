@@ -7,11 +7,11 @@ enum class Rights(
     val level: Int
 ) {
     NONE(-1,0,true,0),
-    SUPPORT(1,1,true,1),
-    MOD(0,1,true,2),
-    ADMINISTRATOR(1,2,true,3),
-    DEVELOPER(1,2,true,4),
-    MANAGER(1,2,true,5);
+    SUPPORT(65413,1,false,1),
+    MODERATOR(65417,1,false,2),
+    ADMINISTRATOR(65424,2,false,3),
+    DEVELOPER(65423,2,false,4),
+    MANAGER(65418,2,false,5);
     ;
 
     public fun isAtLeast(other: Rights): Boolean = level >= other.level
