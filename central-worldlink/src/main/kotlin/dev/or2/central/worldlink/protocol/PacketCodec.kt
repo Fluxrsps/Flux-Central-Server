@@ -34,6 +34,17 @@ enum class FieldKind(
 
     /** `u16 count` + up to [maxEntries] × (display name + previous name). */
     SOCIAL_IGNORE_LIST(maxEntries = dev.or2.central.worldlink.protocol.social.SocialLimits.MAX_LIST_ENTRIES),
+
+    STRING_LAYOUT_OWNER(maxBytes = dev.or2.central.worldlink.protocol.layout.LayoutLimits.OWNER_NAME_MAX_UTF8),
+
+    /** `u16 count` + up to [maxEntries] × (panel, x, y, width, height, host panel, tab order). */
+    LAYOUT_WINDOW_LIST(maxEntries = dev.or2.central.worldlink.protocol.layout.LayoutLimits.MAX_WINDOWS),
+
+    /** `u16 count` + up to [maxEntries] × (display, x, y, width, height). */
+    LAYOUT_DISPLAY_LIST(maxEntries = dev.or2.central.worldlink.protocol.layout.LayoutLimits.MAX_DISPLAYS),
+
+    /** `u16 count` + up to [maxEntries] × (slot, name key, shared, screen width, screen height). */
+    LAYOUT_SUMMARY_LIST(maxEntries = dev.or2.central.worldlink.protocol.layout.LayoutLimits.MAX_SLOTS),
 }
 
 @Target(AnnotationTarget.CLASS)
@@ -121,6 +132,7 @@ object PacketBodySize {
             FieldKind.STRING_LOGIN_RIGHTS,
             FieldKind.STRING_LOGIN_SCRIPT,
             FieldKind.STRING_PM,
+            FieldKind.STRING_LAYOUT_OWNER,
             -> {
                 require(maxBytes > 0) { "$this requires maxBytes" }
                 WireSize(2, 2 + maxBytes)
@@ -144,7 +156,19 @@ object PacketBodySize {
                 val entryMax = lenPrefixedUtf8(96) + lenPrefixedUtf8(96)
                 WireSize(2, 2 + maxEntries * entryMax)
             }
+            FieldKind.LAYOUT_WINDOW_LIST ->
+                countedList(dev.or2.central.worldlink.protocol.layout.LayoutLimits.WINDOW_ENTRY_BYTES)
+            FieldKind.LAYOUT_DISPLAY_LIST ->
+                countedList(dev.or2.central.worldlink.protocol.layout.LayoutLimits.DISPLAY_ENTRY_BYTES)
+            FieldKind.LAYOUT_SUMMARY_LIST ->
+                countedList(dev.or2.central.worldlink.protocol.layout.LayoutLimits.SUMMARY_ENTRY_BYTES)
         }
+
+    /** `u16 count` followed by up to [FieldKind.maxEntries] fixed-width entries. */
+    private fun FieldKind.countedList(entryBytes: Int): WireSize {
+        require(maxEntries > 0) { "$this requires maxEntries" }
+        return WireSize(2, 2 + maxEntries * entryBytes)
+    }
 
     private fun lenPrefixedUtf8(maxUtf8: Int): Int = 2 + maxUtf8
 

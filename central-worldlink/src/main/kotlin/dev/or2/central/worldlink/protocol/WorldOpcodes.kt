@@ -56,6 +56,23 @@ object WorldOpcodes {
     const val OP_WORLD_SOCIAL_SYNC_FAIL: Int = 107
     const val OP_SERVER_FRIEND_PRESENCE: Int = 108
 
+    const val OP_WORLD_LAYOUT_SAVE: Int = 112
+    const val OP_WORLD_LAYOUT_LOAD: Int = 113
+    const val OP_WORLD_LAYOUT_LIST: Int = 114
+    const val OP_WORLD_LAYOUT_SHARED: Int = 116
+
+    const val OP_WORLD_LAYOUT_OK: Int = 117
+    const val OP_WORLD_LAYOUT_FAIL: Int = 118
+    const val OP_WORLD_LAYOUT_DATA: Int = 119
+    const val OP_WORLD_LAYOUT_LIST_OK: Int = 120
+
+    const val LAYOUT_FAIL_NOT_ALLOWED: Int = 1
+    const val LAYOUT_FAIL_BAD_SLOT: Int = 2
+    const val LAYOUT_FAIL_UNKNOWN_CHARACTER: Int = 3
+    const val LAYOUT_FAIL_EMPTY: Int = 4
+    const val LAYOUT_FAIL_NOT_SHARED: Int = 5
+    const val LAYOUT_FAIL_STORAGE: Int = 6
+
     const val PROTOCOL_VERSION: Int = 8
     const val MIN_CLIENT_PROTOCOL_VERSION: Int = 2
     const val MAX_CLIENT_PROTOCOL_VERSION: Int = 8

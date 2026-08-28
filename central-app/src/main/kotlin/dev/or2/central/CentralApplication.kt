@@ -38,6 +38,8 @@ import dev.or2.central.notify.handlers.PunishmentNotifyHandler
 import dev.or2.central.notify.handlers.WorldBroadcastNotifyHandler
 import dev.or2.central.notify.handlers.WorldListInvalidateHandler
 import dev.or2.central.notify.handlers.WorldRebootNotifyHandler
+import dev.or2.central.layout.CentralLayoutRepository
+import dev.or2.central.layout.LayoutService
 import dev.or2.central.social.CentralSocialRepository
 import dev.or2.central.social.OnlinePresenceIndex
 import dev.or2.central.social.SocialGraphLoader
@@ -56,6 +58,7 @@ import dev.or2.central.worldlink.handlers.LoginHandler
 import dev.or2.central.worldlink.handlers.LogoutHandler
 import dev.or2.central.worldlink.handlers.PushSubscribeHandler
 import dev.or2.central.worldlink.handlers.DiscordLinkHandler
+import dev.or2.central.worldlink.handlers.LayoutHandler
 import dev.or2.central.worldlink.handlers.SocialHandler
 import dev.or2.central.worldlink.net.WorldLinkServer
 import io.ktor.serialization.kotlinx.json.json
@@ -188,6 +191,8 @@ object CentralApplication {
             single { WorldConnectionRegistry() }
             single { WorldPresenceService(get(), get(), get(), get()) }
             single { CentralSocialRepository(get()) }
+            single { CentralLayoutRepository(get()) }
+            single { LayoutService(get()) }
             single {
                 val store = SocialGraphStore()
                 SocialGraphLoader(get()).loadInto(store)
@@ -240,6 +245,7 @@ object CentralApplication {
             single { HeartbeatHandler(get()) }
             single { LogoutHandler(get(), get(), get()) }
             single { SocialHandler(get()) }
+            single { LayoutHandler(get()) }
             single {
                 DiscordRuntime.create(
                     dataSource = get(),
@@ -262,6 +268,7 @@ object CentralApplication {
                     heartbeatHandler = get(),
                     logoutHandler = get(),
                     socialHandler = get(),
+                    layoutHandler = get(),
                     discordLinkHandler = get(),
                     registry = get(),
                     worldPresenceService = get(),

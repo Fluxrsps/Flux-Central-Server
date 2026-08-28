@@ -9,6 +9,7 @@ import dev.or2.central.worldlink.handlers.PushSubscribeHandler
 import dev.or2.central.worldlink.protocol.PacketCatalog
 import dev.or2.central.worldlink.protocol.WorldOpcodes
 import dev.or2.central.worldlink.handlers.DiscordLinkHandler
+import dev.or2.central.worldlink.handlers.LayoutHandler
 import dev.or2.central.worldlink.handlers.SocialHandler
 import dev.or2.central.worldlink.protocol.packets.outgoing.impl.HelloRejectPacket
 import dev.or2.central.worldlink.protocol.packets.outgoing.impl.LoginFailPacket
@@ -22,6 +23,7 @@ class WorldLinkHandler(
     private val heartbeatHandler: HeartbeatHandler,
     private val logoutHandler: LogoutHandler,
     private val socialHandler: SocialHandler,
+    private val layoutHandler: LayoutHandler,
     private val discordLinkHandler: DiscordLinkHandler,
     private val registry: WorldConnectionRegistry,
     private val worldPresenceService: WorldPresenceService,
@@ -56,6 +58,11 @@ class WorldLinkHandler(
                 WorldOpcodes.OP_WORLD_CHAT_FILTERS,
                 WorldOpcodes.OP_WORLD_SOCIAL_SYNC,
                 -> socialHandler.handle(connection, input.opcode, input)
+                WorldOpcodes.OP_WORLD_LAYOUT_SAVE,
+                WorldOpcodes.OP_WORLD_LAYOUT_LOAD,
+                WorldOpcodes.OP_WORLD_LAYOUT_LIST,
+                WorldOpcodes.OP_WORLD_LAYOUT_SHARED,
+                -> layoutHandler.handle(connection, input.opcode, input)
                 WorldOpcodes.OP_GAME_DISCORD_LINK_PENDING ->
                     discordLinkHandler.handlePending(connection, input)
                 WorldOpcodes.OP_GAME_DISCORD_LINK_INVALIDATE ->
