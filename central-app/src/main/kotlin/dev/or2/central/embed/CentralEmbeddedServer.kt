@@ -6,10 +6,13 @@ import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.netty.NettyApplicationEngine
+import org.slf4j.LoggerFactory
 
 class CentralEmbeddedServer(
     private val config: CentralConfig,
 ) {
+    private val log = LoggerFactory.getLogger(CentralEmbeddedServer::class.java)
+
     @Volatile
     private var server: EmbeddedServer<NettyApplicationEngine, NettyApplicationEngine.Configuration>? = null
 
@@ -25,6 +28,13 @@ class CentralEmbeddedServer(
             embeddedServer(Netty, port = effectiveConfig.http.port, host = "0.0.0.0") {
                 CentralApplication.configure(this, effectiveConfig)
             }.also { it.start(wait = false) }
+
+        log.info(
+            "HTTP listening on 0.0.0.0:{} — world-link on 0.0.0.0:{}",
+            effectiveConfig.http.port,
+            effectiveConfig.worldLink.port,
+        )
+        log.info(READY_MARKER)
     }
 
     fun stop() {
@@ -34,5 +44,10 @@ class CentralEmbeddedServer(
             EmbeddedPostgres.stop()
             stopEmbeddedPostgresOnStop = false
         }
+    }
+
+    companion object {
+        /** Must match `config.startup.done` in `deploy/pterodactyl/egg-openrune-central.json`. */
+        const val READY_MARKER = "OpenRune Central is online"
     }
 }

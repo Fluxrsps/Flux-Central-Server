@@ -3,7 +3,8 @@ package dev.or2.central.config
 import com.sksamuel.hoplite.ConfigAlias
 import com.sksamuel.hoplite.ConfigLoaderBuilder
 import com.sksamuel.hoplite.addEnvironmentSource
-import com.sksamuel.hoplite.yaml.YamlPropertySource
+import com.sksamuel.hoplite.addPathSource
+import java.nio.file.Files
 import java.nio.file.Path
 
 data class CentralConfig(
@@ -38,18 +39,24 @@ data class CentralConfig(
 
     companion object {
         fun load(): CentralConfig {
-            val configPath =
-                System.getenv("OPENRUNE_CONFIG")?.trim()?.takeIf { it.isNotEmpty() }
-                    ?: "central-config.yaml"
+            val explicitPath = System.getenv("OPENRUNE_CONFIG")?.trim()?.takeIf { it.isNotEmpty() }
+            return load(
+                configPath = Path.of(explicitPath ?: "central-config.yaml"),
+                required = explicitPath != null,
+            )
+        }
 
-            val builder =
-                ConfigLoaderBuilder.default()
-                    .addEnvironmentSource(useUnderscoresAsSeparator = false)
+        /** Loads [configPath] layered over the environment; the file wins on conflicts. */
+        fun load(configPath: Path, required: Boolean): CentralConfig {
+            val builder = ConfigLoaderBuilder.default()
 
-            val path = Path.of(configPath)
-            if (path.toFile().exists()) {
-                builder.addSource(YamlPropertySource(path.toString()))
+            if (Files.isRegularFile(configPath)) {
+                builder.addPathSource(configPath)
+            } else if (required) {
+                error("Config file not found or not readable: ${configPath.toAbsolutePath()}")
             }
+
+            builder.addEnvironmentSource(useUnderscoresAsSeparator = false)
 
             return builder.build().loadConfigOrThrow<CentralConfigRoot>().openrune
         }

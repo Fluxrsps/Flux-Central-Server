@@ -61,7 +61,7 @@ openrune:
 
 ## World-link TCP
 
-`openrune.worldsLinkPort` (default **9091**) is **not** tunneled by this HTTP setup — use private networking or a separate TCP tunnel.
+`openrune.worldLink.port` (default **9091**) is **not** tunneled by this HTTP setup — use private networking or a separate TCP tunnel.
 
 ## Alternatives
 

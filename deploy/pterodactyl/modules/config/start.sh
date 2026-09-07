@@ -1,10 +1,136 @@
 #!/usr/bin/env bash
-# Write central-config.yaml from Pterodactyl panel variables (env).
-# Set OPENRUNE_WRITE_CONFIG=0 to use a hand-managed central-config.yaml instead.
+# Migrate an old-schema central-config.yaml, then write it from Pterodactyl panel
+# variables (env).
+# Set OPENRUNE_WRITE_CONFIG=0 to use a hand-managed central-config.yaml instead
+# (the migration still runs). Set OPENRUNE_MIGRATE_CONFIG=0 to skip the migration.
 
 OPENRUNE_WRITE_CONFIG="${OPENRUNE_WRITE_CONFIG:-1}"
+OPENRUNE_MIGRATE_CONFIG="${OPENRUNE_MIGRATE_CONFIG:-1}"
+
+CONFIG_FILE="${OPENRUNE_CONFIG:-/home/container/central-config.yaml}"
+TMP="${CONFIG_FILE}.new"
 
 enabled() { [[ "${1}" =~ ^(true|1|yes|on)$ ]]; }
+
+# Old flat schema -> the nested schema CentralConfig.kt decodes. See README.md for the mapping.
+needs_migration() {
+    local file="$1"
+    grep -qE '^  (db|sessionsTtlMs|worldsLink[A-Za-z]*|onlineSampleIntervalSeconds|badWords[A-Z][A-Za-z]*|cloudflared):' "${file}" && return 0
+    grep -qE '^[[:space:]]+configProps:[[:space:]]*[|>]' "${file}" && return 0
+    grep -qE '^[[:space:]]+param\.[0-9]+:' "${file}" && return 0
+    grep -qE '^[[:space:]]+requireCredentials:' "${file}" && return 0
+    return 1
+}
+
+migrate_config_file() {
+    local file="$1"
+    local migrated="${file}.migrated"
+
+    awk '
+        function indent_of(s,   n) { match(s, /^ */); return RLENGTH }
+        function yq(s) { gsub(/'"'"'/, "'"'"''"'"'", s); return "'"'"'" s "'"'"'" }
+        function stash(key, line,   v) {
+            v = line
+            sub(/^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*:[[:space:]]*/, "", v)
+            flat[key] = v
+        }
+
+        skip_block {
+            if ($0 ~ /^[[:space:]]*$/) next
+            if (indent_of($0) > skip_indent) next
+            skip_block = 0
+        }
+
+        in_props {
+            if ($0 ~ /^[[:space:]]*$/) next
+            if (indent_of($0) > props_indent) {
+                line = $0
+                sub(/^[[:space:]]+/, "", line)
+                sub(/[[:space:]]+$/, "", line)
+                if (line == "") next
+                eq = index(line, "=")
+                if (eq < 2) {
+                    printf("[Config] WARN: dropping jav_config prop without \"=\": %s\n", line) > "/dev/stderr"
+                    next
+                }
+                k = substr(line, 1, eq - 1)
+                v = substr(line, eq + 1)
+                printf("%s%s: %s\n", props_pad, k, yq(v))
+                next
+            }
+            in_props = 0
+        }
+
+        /^  session:[[:space:]]*$/    { have["session"] = 1 }
+        /^  worldLink:[[:space:]]*$/  { have["worldLink"] = 1 }
+        /^  analytics:[[:space:]]*$/  { have["analytics"] = 1 }
+        /^  badWords:[[:space:]]*$/   { have["badWords"] = 1 }
+
+        /^  db:[[:space:]]*$/                 { print "  database:"; next }
+        /^[[:space:]]+requireCredentials:/    { next }
+        /^  cloudflared:[[:space:]]*$/        { skip_block = 1; skip_indent = 2; next }
+
+        /^  sessionsTtlMs:/                { stash("ttlMs", $0); next }
+        /^  worldsLinkPort:/               { stash("port", $0); next }
+        /^  worldsLinkSoBacklog:/          { stash("soBacklog", $0); next }
+        /^  worldsLinkReadTimeoutSeconds:/ { stash("readTimeoutSeconds", $0); next }
+        /^  onlineSampleIntervalSeconds:/  { stash("onlineSampleIntervalSeconds", $0); next }
+        /^  badWordsRemoteUrl:/            { stash("remoteUrl", $0); next }
+        /^  badWordsRefreshMinutes:/       { stash("refreshMinutes", $0); next }
+
+        /^[[:space:]]+configProps:[[:space:]]*[|>][-+]?[[:space:]]*$/ {
+            props_indent = indent_of($0)
+            props_pad = sprintf("%*s", props_indent + 2, "")
+            in_props = 1
+            printf("%*sconfigProps:\n", props_indent, "")
+            next
+        }
+
+        /^[[:space:]]+param\.[0-9]+:[[:space:]]*/ {
+            pad = sprintf("%*s", indent_of($0), "")
+            rest = $0
+            sub(/^[[:space:]]+param\./, "", rest)
+            colon = index(rest, ":")
+            num = substr(rest, 1, colon - 1)
+            val = substr(rest, colon + 1)
+            sub(/^[[:space:]]+/, "", val)
+            sub(/^'"'"'/, "", val); sub(/'"'"'$/, "", val)
+            printf("%sparam: %s\n", pad, yq(num "=" val))
+            next
+        }
+
+        { print }
+
+        END {
+            if ("ttlMs" in flat && !("session" in have)) {
+                printf("  session:\n    ttlMs: %s\n", flat["ttlMs"])
+            }
+            if (!("worldLink" in have) && (("port" in flat) || ("soBacklog" in flat) || ("readTimeoutSeconds" in flat))) {
+                printf("  worldLink:\n")
+                if ("port" in flat)               printf("    port: %s\n", flat["port"])
+                if ("soBacklog" in flat)          printf("    soBacklog: %s\n", flat["soBacklog"])
+                if ("readTimeoutSeconds" in flat) printf("    readTimeoutSeconds: %s\n", flat["readTimeoutSeconds"])
+            }
+            if ("onlineSampleIntervalSeconds" in flat && !("analytics" in have)) {
+                printf("  analytics:\n    onlineSampleIntervalSeconds: %s\n", flat["onlineSampleIntervalSeconds"])
+            }
+            if (!("badWords" in have) && (("remoteUrl" in flat) || ("refreshMinutes" in flat))) {
+                printf("  badWords:\n")
+                if ("remoteUrl" in flat)      printf("    remoteUrl: %s\n", flat["remoteUrl"])
+                if ("refreshMinutes" in flat) printf("    refreshMinutes: %s\n", flat["refreshMinutes"])
+            }
+        }
+    ' "${file}" >"${migrated}" || { rm -f "${migrated}"; return 1; }
+
+    local backup="${file}.old-schema.$(date +%Y%m%d_%H%M%S)"
+    cp -a "${file}" "${backup}" || { rm -f "${migrated}"; return 1; }
+    mv -f "${migrated}" "${file}"
+    echo "[Config] Migrated ${file} from the old flat schema (backup: ${backup})"
+}
+
+if enabled "${OPENRUNE_MIGRATE_CONFIG}" && [[ -f "${CONFIG_FILE}" ]] && needs_migration "${CONFIG_FILE}"; then
+    migrate_config_file "${CONFIG_FILE}" || echo "[Config] WARN: migration of ${CONFIG_FILE} failed; leaving it unchanged"
+fi
 
 if ! enabled "${OPENRUNE_WRITE_CONFIG}"; then
     exit 0
@@ -80,11 +206,48 @@ require_panel_db() {
     fi
 }
 
+jav_keys=()
+jav_vals=()
+
+jav_put() {
+    local key="$1" value="$2" i
+    for i in "${!jav_keys[@]}"; do
+        if [[ "${jav_keys[i]}" == "${key}" ]]; then
+            echo "[Config] WARN: duplicate jav_config prop '${key}'; keeping the last value" >&2
+            jav_vals[i]="${value}"
+            return
+        fi
+    done
+    jav_keys+=("${key}")
+    jav_vals+=("${value}")
+}
+
+parse_jav_props() {
+    local line key value
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+        [[ -z "${line//[[:space:]]/}" ]] && continue
+        if [[ "${line}" != *"="* ]]; then
+            echo "[Config] WARN: ignoring jav_config prop without '=': ${line}" >&2
+            continue
+        fi
+        key="${line%%=*}"
+        value="${line#*=}"
+        key="${key#"${key%%[![:space:]]*}"}"
+        key="${key%"${key##*[![:space:]]}"}"
+        if [[ -z "${key}" ]]; then
+            echo "[Config] WARN: ignoring jav_config prop with empty key: ${line}" >&2
+            continue
+        fi
+        jav_put "${key}" "${value}"
+    done < <(expand_jav_props_to_lines "$1")
+}
+
 echo "[Config] Writing central-config.yaml from panel variables"
 require_panel_db
 
-CONFIG_FILE="/home/container/central-config.yaml"
-TMP="${CONFIG_FILE}.new"
+if [[ -n "${OPENRUNE_JAV_CONFIG_PROPS:-}" ]]; then
+    parse_jav_props "${OPENRUNE_JAV_CONFIG_PROPS}"
+fi
 
 yaml_quote() {
     printf '%s' "$1" | sed "s/'/''/g"
@@ -105,7 +268,7 @@ yaml_quote() {
     fi
 
     db_port="${OPENRUNE_DB_PORT:-5432}"
-    echo "  db:"
+    echo "  database:"
     if [[ -z "${OPENRUNE_JDBC_URL:-}" ]]; then
         echo "    host: '$(yaml_quote "${OPENRUNE_DB_HOST}")'"
         echo "    port: ${db_port}"
@@ -116,11 +279,6 @@ yaml_quote() {
     fi
     if [[ -n "${OPENRUNE_DB_PASSWORD:-}" ]]; then
         echo "    password: '$(yaml_quote "${OPENRUNE_DB_PASSWORD}")'"
-    fi
-    if [[ -n "${OPENRUNE_DB_REQUIRE_CREDENTIALS:-}" ]]; then
-        echo "    requireCredentials: ${OPENRUNE_DB_REQUIRE_CREDENTIALS}"
-    elif is_local_db_host && [[ -z "${OPENRUNE_JDBC_URL:-}" ]]; then
-        echo "    requireCredentials: false"
     fi
     echo "    poolSize: ${OPENRUNE_DB_POOL_SIZE:-10}"
 
@@ -133,38 +291,33 @@ yaml_quote() {
     fi
 
     if [[ -n "${OPENRUNE_SESSION_TTL_MS:-}" ]]; then
-        echo "  sessionsTtlMs: ${OPENRUNE_SESSION_TTL_MS}"
-    fi
-    if [[ -n "${OPENRUNE_WORLD_LINK_PORT:-}" ]]; then
-        echo "  worldsLinkPort: ${OPENRUNE_WORLD_LINK_PORT}"
-    fi
-    if [[ -n "${OPENRUNE_WORLD_LINK_SO_BACKLOG:-}" ]]; then
-        echo "  worldsLinkSoBacklog: ${OPENRUNE_WORLD_LINK_SO_BACKLOG}"
+        echo "  session:"
+        echo "    ttlMs: ${OPENRUNE_SESSION_TTL_MS}"
     fi
 
-    if [[ -n "${OPENRUNE_JAV_CONFIG_REVISION:-}" || -n "${OPENRUNE_JAV_CONFIG_PROPS:-}" ]]; then
+    if [[ -n "${OPENRUNE_WORLD_LINK_PORT:-}" || -n "${OPENRUNE_WORLD_LINK_SO_BACKLOG:-}" ]]; then
+        echo "  worldLink:"
+        if [[ -n "${OPENRUNE_WORLD_LINK_PORT:-}" ]]; then
+            echo "    port: ${OPENRUNE_WORLD_LINK_PORT}"
+        fi
+        if [[ -n "${OPENRUNE_WORLD_LINK_SO_BACKLOG:-}" ]]; then
+            echo "    soBacklog: ${OPENRUNE_WORLD_LINK_SO_BACKLOG}"
+        fi
+    fi
+
+    if [[ -n "${OPENRUNE_JAV_CONFIG_REVISION:-}" || ${#jav_keys[@]} -gt 0 ]]; then
         echo "  javConfig:"
         if [[ -n "${OPENRUNE_JAV_CONFIG_REVISION:-}" ]]; then
             echo "    revision: ${OPENRUNE_JAV_CONFIG_REVISION}"
         fi
-        if [[ -n "${OPENRUNE_JAV_CONFIG_PROPS:-}" ]]; then
-            echo "    configProps: |"
-            while IFS= read -r jav_line || [[ -n "${jav_line}" ]]; do
-                [[ -z "${jav_line//[[:space:]]/}" ]] && continue
-                echo "      ${jav_line}"
-            done < <(expand_jav_props_to_lines "${OPENRUNE_JAV_CONFIG_PROPS}")
+        if [[ ${#jav_keys[@]} -gt 0 ]]; then
+            echo "    configProps:"
+            for i in "${!jav_keys[@]}"; do
+                echo "      ${jav_keys[i]}: '$(yaml_quote "${jav_vals[i]}")'"
+            done
         fi
     fi
 
-    if [[ -n "${CLOUDFLARED_STATUS:-}" || -n "${CLOUDFLARED_TOKEN:-}" ]]; then
-        echo "  cloudflared:"
-        if [[ -n "${CLOUDFLARED_STATUS:-}" ]]; then
-            echo "    status: '${CLOUDFLARED_STATUS}'"
-        fi
-        if [[ -n "${CLOUDFLARED_TOKEN:-}" ]]; then
-            echo "    token: '$(yaml_quote "${CLOUDFLARED_TOKEN}")'"
-        fi
-    fi
 } >"${TMP}"
 
 mv -f "${TMP}" "${CONFIG_FILE}"

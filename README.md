@@ -26,29 +26,51 @@ Central uses **two layers** merged into one effective config:
 
 When YAML changes a value that was already set in the environment, startup prints `[Config]` lines to the console.
 
-**Config file lookup** (first match wins):
+**Config file lookup:**
 
-1. `OPENRUNE_CONFIG` — path to your YAML file
-2. `./central-config.yaml` — process working directory
-3. `central-config.yaml` — directory containing the running JAR
+1. `OPENRUNE_CONFIG` — path to your YAML file. If set, the file **must** exist; startup fails otherwise.
+2. Otherwise `./central-config.yaml`, relative to the process working directory.
 
-If no file exists, only environment variables (and built-in defaults for optional settings) apply.
+If no file exists at the default path, only environment variables (and built-in defaults for optional settings) apply. Note that this makes `database.host` blank, which starts an **embedded** PostgreSQL rather than connecting to your database — so if Central comes up with an empty database, check that your config file is actually being found.
 
-Every key is listed in `CentralConfigKey.kt` (env var name + YAML path). Copy [`central-config.example.yaml`](central-config.example.yaml) as a starting point.
+Every key is defined in [`CentralConfig.kt`](central-app/src/main/kotlin/dev/or2/central/config/CentralConfig.kt) (YAML path + `@ConfigAlias` env var name). Copy [`central-config.example.yaml`](central-config.example.yaml) as a starting point.
 
 Optional HTTP port before engine start: `OPENRUNE_HTTP_PORT` or `openrune.http.port` (otherwise see `openrune-central/src/main/resources/application.yaml`).
+
+### Migrating an old config file
+
+Earlier builds used a flatter YAML schema. Keys that no longer match are **silently ignored** by Hoplite, so a stale file looks fine and then fails at runtime — an old `db:` block leaves `database.host` empty, for example.
+
+On Pterodactyl, [`modules/config/start.sh`](deploy/pterodactyl/modules/config/start.sh) rewrites the file in place on startup before the generator runs, so hand-managed files (`OPENRUNE_WRITE_CONFIG=0`) are fixed too. It backs the original up as `central-config.yaml.old-schema.<timestamp>` and prints `[Config] Migrated …`. It is a no-op once the file is current, and can be turned off with `OPENRUNE_MIGRATE_CONFIG=0`.
+
+| Old | New |
+| --- | --- |
+| `openrune.db` | `openrune.database` |
+| `openrune.db.requireCredentials` | removed — Hikari always sends user/password |
+| `openrune.sessionsTtlMs` | `openrune.session.ttlMs` |
+| `openrune.worldsLinkPort` | `openrune.worldLink.port` |
+| `openrune.worldsLinkSoBacklog` | `openrune.worldLink.soBacklog` |
+| `openrune.worldsLinkReadTimeoutSeconds` | `openrune.worldLink.readTimeoutSeconds` |
+| `openrune.onlineSampleIntervalSeconds` | `openrune.analytics.onlineSampleIntervalSeconds` |
+| `openrune.badWordsRemoteUrl` | `openrune.badWords.remoteUrl` |
+| `openrune.badWordsRefreshMinutes` | `openrune.badWords.refreshMinutes` |
+| `javConfig.configProps: \|` block text | `javConfig.configProps` map |
+| `configProps.param.17: <url>` | `configProps.param: '17=<url>'` |
+| `openrune.cloudflared` | removed — `CLOUDFLARED_*` env only |
+
+Where a file has both forms (`sessionsTtlMs` *and* `session:`), the nested block wins and the flat key is dropped.
 
 ### Database
 
 Central **always** needs a reachable Postgres database. It does **not** invent a localhost database for you.
 
-You can connect in three ways:
+You can connect in two ways:
 
 #### A. Host + database name + credentials (typical)
 
 ```yaml
 openrune:
-  db:
+  database:
     host: db.example.com
     port: 5432
     name: openrune_central
@@ -64,46 +86,24 @@ Env: `OPENRUNE_DB_HOST`, `OPENRUNE_DB_NAME`, `OPENRUNE_DB_USER`, `OPENRUNE_DB_PA
 openrune:
   jdbc:
     url: jdbc:postgresql://db.example.com:5432/openrune_central
-  db:
+  database:
     user: openrune
     password: your-secret
 ```
 
 Env: `OPENRUNE_JDBC_URL` plus `OPENRUNE_DB_USER` / `OPENRUNE_DB_PASSWORD`.
 
-When a JDBC URL is set, **user and password are not required by default** (see C).
-
-#### C. JDBC URL only — no separate user/password
-
-Use this for **trust / peer authentication**, **credentials embedded in the URL**, or other setups where Hikari should not send a separate username/password:
-
-```yaml
-openrune:
-  jdbc:
-    url: jdbc:postgresql:///openrune_central?user=openrune
-  db:
-    requireCredentials: false
-```
-
-Or only env:
-
-```bash
-export OPENRUNE_JDBC_URL='jdbc:postgresql://127.0.0.1:5432/openrune_central'
-export OPENRUNE_DB_REQUIRE_CREDENTIALS=false
-```
-
-Explicit override: `openrune.db.requireCredentials: true` forces user/password even when using a JDBC URL.
+`openrune.jdbc.url` wins over `openrune.database.host` / `.port` / `.name` when both are set. User and password may also be set under `jdbc:` directly, which then takes priority over `database:`. Hikari always sends a username and password; the defaults are `postgres` and an empty string, so for trust/peer authentication set `user` to the trusted role and leave `password` empty.
 
 | Key | Env | Notes |
 | --- | --- | --- |
 | `openrune.jdbc.url` | `OPENRUNE_JDBC_URL` | Full JDBC URL |
-| `openrune.db.host` | `OPENRUNE_DB_HOST` | Required if JDBC URL omitted |
-| `openrune.db.port` | `OPENRUNE_DB_PORT` | Default `5432` |
-| `openrune.db.name` | `OPENRUNE_DB_NAME` | Required if JDBC URL omitted |
-| `openrune.db.user` | `OPENRUNE_DB_USER` | Required unless credentials not required |
-| `openrune.db.password` | `OPENRUNE_DB_PASSWORD` | Required unless credentials not required |
-| `openrune.db.requireCredentials` | `OPENRUNE_DB_REQUIRE_CREDENTIALS` | Default `true` without JDBC URL; `false` when JDBC URL is set |
-| `openrune.db.poolSize` | `OPENRUNE_DB_POOL_SIZE` | Hikari pool size (1–100, default `10`) |
+| `openrune.database.host` | `OPENRUNE_DB_HOST` | Required if JDBC URL omitted |
+| `openrune.database.port` | `OPENRUNE_DB_PORT` | Default `5432` |
+| `openrune.database.name` | `OPENRUNE_DB_NAME` | Required if JDBC URL omitted |
+| `openrune.database.user` | `OPENRUNE_DB_USER` | Default `postgres` |
+| `openrune.database.password` | `OPENRUNE_DB_PASSWORD` | Default empty |
+| `openrune.database.poolSize` | `OPENRUNE_DB_POOL_SIZE` | Hikari pool size (1–128, default `10`) |
 
 ### Deployment examples
 
@@ -113,10 +113,11 @@ Explicit override: `openrune.db.requireCredentials: true` forces user/password e
 openrune:
   jdbc:
     url: jdbc:postgresql://central-db.internal:5432/openrune_central
-  db:
+  database:
     user: openrune
     password: your-secret
-  worldsLinkPort: 9091
+  worldLink:
+    port: 9091
 ```
 
 **Shared Postgres with the game (local dev):**
@@ -125,10 +126,11 @@ openrune:
 openrune:
   jdbc:
     url: jdbc:postgresql://127.0.0.1:5432/openrune
-  db:
+  database:
     user: openrune
     password: openrune
-  worldsLinkPort: 9091
+  worldLink:
+    port: 9091
 ```
 
 Point game worlds at this Central host for world-link auth. Central does not start Postgres; it only connects.
@@ -137,40 +139,43 @@ Point game worlds at this Central host for world-link auth. Central does not sta
 
 | YAML path | Environment variable | Purpose |
 | --- | --- | --- |
-| `openrune.sessionsTtlMs` | `OPENRUNE_SESSION_TTL_MS` | Session sweep TTL (ms) |
-| `openrune.worldsLinkPort` | `OPENRUNE_WORLD_LINK_PORT` | World-link TCP; `false` / `0` disables |
-| `openrune.worldsLinkSoBacklog` | `OPENRUNE_WORLD_LINK_SO_BACKLOG` | TCP listen backlog |
-| `openrune.worldsLinkReadTimeoutSeconds` | `OPENRUNE_WORLD_LINK_READ_TIMEOUT_SEC` | World connection read timeout |
-| `openrune.worldsLinkMaxConnectionsPerIp` | `OPENRUNE_WORLD_LINK_MAX_CONN_PER_IP` | Per-IP cap |
-| `openrune.worldsLinkMaxConnectionsTotal` | `OPENRUNE_WORLD_LINK_MAX_CONN_TOTAL` | Global cap |
-| `openrune.worldsLinkHandlerThreads` | `OPENRUNE_WORLD_LINK_HANDLER_THREADS` | Worker threads |
-| `openrune.worldsLinkHandlerQueueSize` | `OPENRUNE_WORLD_LINK_HANDLER_QUEUE` | Handler queue |
-| `openrune.worldsLinkMaxFramesPerSecond` | `OPENRUNE_WORLD_LINK_MAX_FRAMES_PER_SEC` | Rate limit |
-| `openrune.worldsLinkMaxFrameBurst` | `OPENRUNE_WORLD_LINK_MAX_FRAME_BURST` | Rate burst |
-| `openrune.onlineSampleIntervalSeconds` | `OPENRUNE_ONLINE_SAMPLE_INTERVAL_SEC` | `online_samples` interval |
+| `openrune.serverName` | `OPENRUNE_SERVER_NAME` | Realm name in the login welcome message |
+| `openrune.auth.passwordHasher` | `OPENRUNE_AUTH_PASSWORD_HASHER` | `bcrypt` or `argon2` |
+| `openrune.auth.bcryptCost` | `OPENRUNE_AUTH_BCRYPT_COST` | bcrypt cost (default `12`) |
+| `openrune.auth.argon2Iterations` | `OPENRUNE_AUTH_ARGON2_ITERATIONS` | Argon2 time cost for new hashes |
+| `openrune.auth.argon2MemoryKib` | `OPENRUNE_AUTH_ARGON2_MEMORY_KIB` | Argon2 memory cost for new hashes |
+| `openrune.session.ttlMs` | `OPENRUNE_SESSIONS_TTL_MS` | Session sweep TTL (ms) |
+| `openrune.worldLink.port` | `OPENRUNE_WORLDS_LINK_PORT` | World-link TCP port |
+| `openrune.worldLink.soBacklog` | `OPENRUNE_WORLDS_LINK_SO_BACKLOG` | TCP listen backlog |
+| `openrune.worldLink.readTimeoutSeconds` | `OPENRUNE_WORLDS_LINK_READ_TIMEOUT_SEC` | World connection read timeout |
+| `openrune.analytics.onlineSampleIntervalSeconds` | `OPENRUNE_ONLINE_SAMPLE_INTERVAL_SEC` | `online_samples` interval |
 | `openrune.http.port` | `OPENRUNE_HTTP_PORT` | HTTP port |
 | `openrune.http.trustProxy` | `OPENRUNE_HTTP_TRUST_PROXY` | Trust `X-Forwarded-*` from proxy/tunnel |
-| `openrune.cloudflared.status` | `CLOUDFLARED_STATUS` | Cloudflare Tunnel enabled |
-| `openrune.cloudflared.token` | `CLOUDFLARED_TOKEN` | Tunnel run token |
 | `openrune.javConfig.revision` | `OPENRUNE_JAV_CONFIG_REVISION` | Remote jav revision |
 | `openrune.javConfig.remoteUrlTemplate` | `OPENRUNE_JAV_CONFIG_URL_TEMPLATE` | Download URL (`%d` = revision) |
-| `openrune.javConfig.configProps` / `configProps.*` | `OPENRUNE_JAV_CONFIG_PROPS` | Jav config overrides |
+| `openrune.javConfig.configProps` | `OPENRUNE_JAV_CONFIG_PROPS` | Jav config overrides (YAML map) |
 | `openrune.javConfig.refreshMinutes` | `OPENRUNE_JAV_CONFIG_REFRESH_MINUTES` | Jav cache refresh |
 | `openrune.javConfig.httpTimeoutSeconds` | `OPENRUNE_JAV_CONFIG_HTTP_TIMEOUT_SEC` | Jav fetch timeout |
-| `openrune.badWordsRemoteUrl` | `OPENRUNE_BAD_WORDS_URL` | Remote bad-word list URL |
-| `openrune.badWordsRefreshMinutes` | `OPENRUNE_BAD_WORDS_REFRESH_MINUTES` | Bad-word refresh |
-| `openrune.badWordsHttpTimeoutSeconds` | `OPENRUNE_BAD_WORDS_HTTP_TIMEOUT_SEC` | Bad-word fetch timeout |
+| `openrune.badWords.remoteUrl` | `OPENRUNE_BAD_WORDS_URL` | Remote bad-word list URL |
+| `openrune.badWords.refreshMinutes` | `OPENRUNE_BAD_WORDS_REFRESH_MINUTES` | Bad-word refresh |
+| `openrune.devWorld.autoCreate` | `OPENRUNE_DEV_WORLD_AUTO_CREATE` | Insert dev realm/world 255 on startup |
+| `openrune.diagnostics.loginTimingLogs` | `OPENRUNE_LOGIN_TIMING_LOGS` | Per-phase login timing lines |
+| `openrune.diagnostics.socialPmTraceLogs` | `OPENRUNE_SOCIAL_PM_TRACE_LOGS` | PM delivery trace lines |
+
+Cloudflare Tunnel is **not** a `CentralConfig` key: `CLOUDFLARED_STATUS` and `CLOUDFLARED_TOKEN` are read from the environment by [`deploy/pterodactyl/modules/cloudflared/start.sh`](deploy/pterodactyl/modules/cloudflared/start.sh) only.
+
+`javConfig.configProps` is a `Map<String, String>` merged into the remote `jav_config.ws` as `key=value`, matching on the text before the first `=`. A client line such as `param=17=https://host/worldslist.ws` is therefore written as key `param`, value `'17=https://host/worldslist.ws'` — so only one `param` entry per file.
 
 ## Without Pterodactyl
 
 - Copy `central-config.example.yaml` → `central-config.yaml`, or set variables in the environment only.
-- **HTTPS / Cloudflare:** `openrune.cloudflared.*` or `CLOUDFLARED_*` — see [deploy/cloudflare/README.md](deploy/cloudflare/README.md).
+- **HTTPS / Cloudflare:** `CLOUDFLARED_*` environment variables — see [deploy/cloudflare/README.md](deploy/cloudflare/README.md).
 - **Trust proxy:** `openrune.http.trustProxy: true` behind nginx, tunnel, etc.
-- **Jav overrides:** multiline `openrune.javConfig.configProps` or per-key `openrune.javConfig.configProps.*`.
+- **Jav overrides:** per-key entries under `openrune.javConfig.configProps`.
 
 ## HTTPS (Cloudflare Tunnel / reverse proxy)
 
-Central serves **plain HTTP** locally. Public HTTPS is handled by Cloudflare or another reverse proxy. Tunnel env/status + token auto-enable trust-proxy unless `openrune.http.trustProxy` is set explicitly. World-link TCP (`openrune.worldsLinkPort`) is separate from HTTP tunneling.
+Central serves **plain HTTP** locally. Public HTTPS is handled by Cloudflare or another reverse proxy. Set `openrune.http.trustProxy: true` (or `OPENRUNE_HTTP_TRUST_PROXY=true`) when behind a tunnel or proxy so `X-Forwarded-*` is honoured — it is **off** by default and is not enabled automatically by the tunnel module. World-link TCP (`openrune.worldLink.port`) is separate from HTTP tunneling.
 
 ## HTTP API
 
