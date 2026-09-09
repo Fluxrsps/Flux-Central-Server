@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ClaudeCodeEditorTabs">
+    <option name="activeSessionId" value="c77eb251-12d7-4f45-b720-3ab32e566eb1" />
+    <option name="openSessionIds">
+      <list>
+        <option value="1e4e8f05-70bf-4cb1-93bb-01882c5ed0ff" />
+        <option value="c77eb251-12d7-4f45-b720-3ab32e566eb1" />
+      </list>
+    </option>
+    <option name="sessionPaths">
+      <map>
+        <entry key="1e4e8f05-70bf-4cb1-93bb-01882c5ed0ff" value="/sessions/4a02bdfc-1813-46d1-979e-73ca6a8cbf5d" />
+        <entry key="c77eb251-12d7-4f45-b720-3ab32e566eb1" value="/sessions/381bb770-6518-4b95-9bdd-a4ce8280fc44" />
+      </map>
+    </option>
+    <option name="sessionTitles">
+      <map>
+        <entry key="1e4e8f05-70bf-4cb1-93bb-01882c5ed0ff" value="run my centeral admin app please so i can connect" />
+        <entry key="c77eb251-12d7-4f45-b720-3ab32e566eb1" value="msg=ok=OK msg=cancel=Cancel msg=message=Message" />
+      </map>
+    </option>
+  </component>
+</project>

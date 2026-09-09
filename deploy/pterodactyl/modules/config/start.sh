@@ -95,7 +95,7 @@ migrate_config_file() {
             val = substr(rest, colon + 1)
             sub(/^[[:space:]]+/, "", val)
             sub(/^'"'"'/, "", val); sub(/'"'"'$/, "", val)
-            printf("%sparam: %s\n", pad, yq(num "=" val))
+            printf("%sparam=%s: %s\n", pad, num, yq(val))
             next
         }
 
@@ -234,6 +234,12 @@ parse_jav_props() {
         value="${line#*=}"
         key="${key#"${key%%[![:space:]]*}"}"
         key="${key%"${key##*[![:space:]]}"}"
+        # param/msg lines are indexed by a second segment (param=17=<url>, msg=ok=OK):
+        # keep both segments in the key so entries do not collide on 'param'.
+        if [[ "${key}" == "param" || "${key}" == "msg" ]] && [[ "${value}" == *"="* ]]; then
+            key="${key}=${value%%=*}"
+            value="${value#*=}"
+        fi
         if [[ -z "${key}" ]]; then
             echo "[Config] WARN: ignoring jav_config prop with empty key: ${line}" >&2
             continue

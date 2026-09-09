@@ -55,7 +55,7 @@ On Pterodactyl, [`modules/config/start.sh`](deploy/pterodactyl/modules/config/st
 | `openrune.badWordsRemoteUrl` | `openrune.badWords.remoteUrl` |
 | `openrune.badWordsRefreshMinutes` | `openrune.badWords.refreshMinutes` |
 | `javConfig.configProps: \|` block text | `javConfig.configProps` map |
-| `configProps.param.17: <url>` | `configProps.param: '17=<url>'` |
+| `configProps.param.17: <url>` | `configProps.param=17: <url>` |
 | `openrune.cloudflared` | removed — `CLOUDFLARED_*` env only |
 
 Where a file has both forms (`sessionsTtlMs` *and* `session:`), the nested block wins and the flat key is dropped.
@@ -164,7 +164,7 @@ Point game worlds at this Central host for world-link auth. Central does not sta
 
 Cloudflare Tunnel is **not** a `CentralConfig` key: `CLOUDFLARED_STATUS` and `CLOUDFLARED_TOKEN` are read from the environment by [`deploy/pterodactyl/modules/cloudflared/start.sh`](deploy/pterodactyl/modules/cloudflared/start.sh) only.
 
-`javConfig.configProps` is a `Map<String, String>` merged into the remote `jav_config.ws` as `key=value`, matching on the text before the first `=`. A client line such as `param=17=https://host/worldslist.ws` is therefore written as key `param`, value `'17=https://host/worldslist.ws'` — so only one `param` entry per file.
+`javConfig.configProps` is a `Map<String, String>` merged into the remote `jav_config.ws` as `key=value`. `param` and `msg` lines are indexed by their second segment, so keep that index in the key — `param=17: https://host/worldslist.ws` replaces the remote `param=17=…` line and leaves `param=25`, `msg=ok`, etc. untouched. Any number of `param`/`msg` entries can be set this way. The legacy form `param: '17=<url>'` is still accepted, but only one such entry fits in the map.
 
 ## Without Pterodactyl
 

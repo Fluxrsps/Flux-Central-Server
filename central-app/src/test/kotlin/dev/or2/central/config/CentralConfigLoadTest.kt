@@ -62,6 +62,30 @@ class CentralConfigLoadTest {
     }
 
     @Test
+    fun `reads indexed jav config props keyed as param=N`() {
+        val file =
+            writeConfig(
+                """
+                openrune:
+                  javConfig:
+                    configProps:
+                      param=17: 'https://central.openrune-rsps.com/worldslist.ws'
+                      param=25: '238'
+                      msg=ok: 'OK'
+                """.trimIndent(),
+            )
+
+        val config = CentralConfig.load(file, required = true)
+
+        assertEquals(
+            "https://central.openrune-rsps.com/worldslist.ws",
+            config.javConfig.configProps["param=17"],
+        )
+        assertEquals("238", config.javConfig.configProps["param=25"])
+        assertEquals("OK", config.javConfig.configProps["msg=ok"])
+    }
+
+    @Test
     fun `resolves the jdbc url from the file instead of falling back to defaults`() {
         val file =
             writeConfig(

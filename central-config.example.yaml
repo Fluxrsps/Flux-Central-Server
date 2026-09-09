@@ -43,7 +43,8 @@ openrune:
     httpTimeoutSeconds: 20
     configProps:
       title: OpenRune Central  # client window title; serverName drives realm login message
-      param: '17=http://127.0.0.1:8080/worldslist.ws'
+      # param/msg entries keep their index in the key, so each one replaces its own remote line
+      param=17: http://127.0.0.1:8080/worldslist.ws
 
   # Inserts development realm/world (id 255) on startup when true (default).
   devWorld:
