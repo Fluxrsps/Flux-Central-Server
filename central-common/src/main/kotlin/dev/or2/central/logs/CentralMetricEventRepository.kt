@@ -14,6 +14,8 @@ import dev.or2.sql.OpenRuneSql
 object CentralMetrics {
     /** A login, counted against the display mode the player logged in on. */
     const val GAMEFRAME: String = "gameframe"
+
+    const val CLIENT: String = "client"
 }
 
 /**
