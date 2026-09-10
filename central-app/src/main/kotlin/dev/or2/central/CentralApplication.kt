@@ -102,9 +102,10 @@ object CentralApplication {
         val koin = application.getKoin()
         val worldListCache = koin.get<WorldListCache>()
         val javConfigCache = koin.get<JavConfigCache>()
+        val badWordIndex = koin.get<BadWordIndex>()
 
         application.routing {
-            centralHttpRoutes(worldListCache, javConfigCache)
+            centralHttpRoutes(worldListCache, javConfigCache, badWordIndex)
         }
 
         val shutdownOnce = AtomicBoolean(false)

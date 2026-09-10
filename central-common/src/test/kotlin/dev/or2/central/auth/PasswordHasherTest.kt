@@ -43,6 +43,27 @@ class PasswordHasherTest {
         assertTrue(bcryptHasher.shouldUpgrade(argonHash))
     }
 
+    /**
+     * The website hashes with PHP's password_hash(), which emits the $2y$ variant.
+     * Central must verify those hashes, or accounts created or rehashed on the site
+     * cannot log in to the game.
+     */
+    @Test
+    fun verifiesPhpStyleBcrypt2YHashes() {
+        val phpHash = "\$2y\$10\$6Kgw7hl7SSGazrtprhp1pesqo3fntiHsZae2K8JxxFLT/O1b76Bpm"
+        val hasher = CompositePasswordHasher("bcrypt", 12)
+        assertTrue(hasher.verify(phpHash, "Password1"))
+        assertFalse(hasher.verify(phpHash, "wrong"))
+    }
+
+    @Test
+    fun bcrypt2YProducesPhpCompatiblePrefix() {
+        val hasher = CompositePasswordHasher("bcrypt2y", 10)
+        val stored = hasher.hash("my-secret")
+        assertTrue(stored.startsWith("\$2y\$"))
+        assertTrue(hasher.verify(stored, "my-secret"))
+    }
+
     @Test
     fun passwordAuthWireRoundTrip() {
         val config =

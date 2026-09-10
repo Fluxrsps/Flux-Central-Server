@@ -1,5 +1,7 @@
 package dev.or2.central.http
 
+import dev.or2.central.account.AccountNameAuthPolicy
+import dev.or2.central.account.BadWordIndex
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -16,6 +18,7 @@ private fun io.ktor.server.application.ApplicationCall.allowBrowserRead() {
 fun Route.centralHttpRoutes(
     worldListCache: WorldListCache,
     javConfigCache: JavConfigCache,
+    badWordIndex: BadWordIndex,
 ) {
     get("/worldslist.ws") {
         val bytes = worldListCache.snapshot()
@@ -46,6 +49,31 @@ fun Route.centralHttpRoutes(
         call.response.headers.append(HttpHeaders.CacheControl, "no-store")
         call.allowBrowserRead()
         call.respondText(body, ContentType.Text.Plain)
+    }
+
+    get("/admin/api/account-name-deceptive-fragments.json") {
+        val fragments = AccountNameAuthPolicy.deceptiveFragmentsForListing().sorted()
+        call.response.headers.append(HttpHeaders.CacheControl, "no-store")
+        call.allowBrowserRead()
+        call.respond(
+            AccountNameDeceptiveFragmentsResponse(
+                fragments = fragments,
+                count = fragments.size,
+            ),
+        )
+    }
+
+    get("/admin/api/account-name-bad-words.json") {
+        val phrases = badWordIndex.roots().sorted()
+        call.response.headers.append(HttpHeaders.CacheControl, "no-store")
+        call.allowBrowserRead()
+        call.respond(
+            AccountNameBadWordsResponse(
+                phrases = phrases,
+                count = phrases.size,
+                maxCanonicalLength = AccountNameAuthPolicy.MAX_CANONICAL_LENGTH,
+            ),
+        )
     }
 
     get("/health") {
