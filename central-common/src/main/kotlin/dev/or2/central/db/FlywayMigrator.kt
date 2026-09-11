@@ -18,6 +18,7 @@ object FlywayMigrator {
             .defaultSchema(DEFAULT_SCHEMA)
             .createSchemas(true)
             .baselineOnMigrate(true)
+            .outOfOrder(true)
             .initSql(
                 """
                 SET search_path TO $DEFAULT_SCHEMA;
