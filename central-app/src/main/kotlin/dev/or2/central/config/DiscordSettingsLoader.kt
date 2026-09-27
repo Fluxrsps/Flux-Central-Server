@@ -13,6 +13,8 @@ internal const val DISCORD_SETTINGS_FILE_NAME = "discord-settings.yml"
 internal data class DiscordSettingsFile(
     val botToken: String = "",
     val guildId: Long = 0L,
+    /** Channel new Trading Post staff alerts go to. Zero keeps them out of Discord. */
+    val exchangeAlertChannelId: Long = 0L,
     val pendingTtlMinutes: Long = 15L,
     val maxWrongAttempts: Int = 3,
 )
@@ -36,6 +38,7 @@ private fun parseDiscordSettingsFile(path: Path): DiscordSettingsFile {
     return DiscordSettingsFile(
         botToken = flat.stringValue("bot-token"),
         guildId = flat.longValue("guild-id"),
+        exchangeAlertChannelId = flat.longValue("exchange-alert-channel-id"),
         pendingTtlMinutes = flat.longValue("pending-ttl-minutes", 15L).coerceAtLeast(1L),
         maxWrongAttempts = flat.intValue("max-wrong-attempts", 3).coerceAtLeast(1),
     )

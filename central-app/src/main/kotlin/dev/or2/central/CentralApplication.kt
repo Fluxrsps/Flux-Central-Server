@@ -8,8 +8,32 @@ import dev.or2.central.auth.PasswordAuthConfig
 import dev.or2.central.auth.PasswordHasher
 import dev.or2.central.config.CentralConfig
 import dev.or2.central.config.toPasswordAuthConfig
+import dev.or2.central.config.DiscordRuntimeConfig
 import dev.or2.central.config.resolveDiscordRuntimeConfig
 import dev.or2.central.discord.DiscordRuntime
+import dev.or2.central.exchange.DiscordAlertNotifier
+import dev.or2.central.exchange.ExchangeConfigProvider
+import dev.or2.central.exchange.ExchangeEngine
+import dev.or2.central.exchange.ExchangeJobs
+import dev.or2.central.exchange.health.AlertNotifier
+import dev.or2.central.exchange.health.AlertService
+import dev.or2.central.exchange.health.DetectionService
+import dev.or2.central.exchange.health.EconomySnapshotService
+import dev.or2.central.exchange.health.MarketAlertService
+import dev.or2.central.exchange.health.MetricsAlertService
+import dev.or2.central.exchange.ops.FreezeService
+import dev.or2.central.exchange.ops.ItemAdminService
+import dev.or2.central.exchange.ops.OsrsItemImporter
+import dev.or2.central.exchange.ops.ExchangeConfigService
+import dev.or2.central.exchange.ops.ReversalService
+import dev.or2.central.exchange.ops.SeedTradeService
+import dev.or2.central.notify.handlers.ExchangeNotifyHandler
+import dev.or2.central.exchange.health.ReconciliationService
+import dev.or2.central.exchange.health.SinkFaucetService
+import dev.or2.central.exchange.health.StaffQueryService
+import dev.or2.central.exchange.health.StatsRollupService
+import dev.or2.central.exchange.health.SystemLiquidityService
+import dev.or2.central.exchange.pricing.MarketPriceService
 import dev.or2.central.config.DataSourceFactory
 import dev.or2.central.db.DevWorldSeeder
 import dev.or2.central.db.FlywayMigrator
@@ -80,6 +104,8 @@ import org.koin.ktor.ext.getKoin
 import org.koin.ktor.plugin.Koin
 
 object CentralApplication {
+    private val log = org.slf4j.LoggerFactory.getLogger(CentralApplication::class.java)
+
     fun configure(application: Application, config: CentralConfig) {
         AccountNameAuthPolicy.preloadWorldLinkDeceptiveFragments()
 
@@ -124,6 +150,8 @@ object CentralApplication {
             koin.get<SessionReaper>().start()
             koin.get<WorldLinkServer>().start()
             koin.get<PgNotifyService>().start()
+            koin.get<ExchangeJobs>().start()
+            seedExchangeItemsIfEmpty(koin.get(), koin.get())
             runCatching { koin.get<DiscordRuntime.Components>().botService.start() }
             runCatching { worldListCache.rebuild() }
             runCatching { javConfigCache.refresh() }
@@ -166,6 +194,27 @@ object CentralApplication {
         application.monitor.subscribe(ApplicationStopped) {
             shutdown()
         }
+    }
+
+    /**
+     * First run against a fresh database has no items, so nothing can be traded. Seeding from the
+     * OSRS prices API here means a database reset needs no follow-up step. It runs off the startup
+     * thread because it makes two HTTP calls, and it only ever fills an empty table: once items
+     * exist, re-seeding is a deliberate act (`gradlew :central-app:importOsrsItems`).
+     */
+    private fun seedExchangeItemsIfEmpty(items: ItemAdminService, importer: OsrsItemImporter) {
+        Thread({
+            runCatching {
+                if (items.itemCount() > 0) {
+                    return@runCatching
+                }
+                log.info("exchange_items is empty; seeding from the OSRS prices API")
+                val result = importer.import(staffCharacterId = 0, reason = "OSRS item seed (empty table on startup)")
+                log.info("exchange item seed: {}", result)
+            }.onFailure {
+                log.warn("Could not seed exchange items; run `gradlew :central-app:importOsrsItems` once reachable", it)
+            }
+        }, "exchange-item-seed").apply { isDaemon = true }.start()
     }
 
     private fun centralModule(config: CentralConfig, dataSource: DataSource) =
@@ -277,7 +326,8 @@ object CentralApplication {
             }
             single { WorldLinkServer(config.worldLink, get(), get()) }
             single { NotifyBroadcaster(get(), get(), get(), get()) }
-            single { PunishmentNotifyHandler(get()) }
+            single { PunishmentNotifyHandler(get(), get<ExchangeEngine>()) }
+            single { ExchangeNotifyHandler(get(), get(), get()) }
             single { PunishmentKickNotifyHandler(get()) }
             single { CharacterMuteNotifyHandler(get()) }
             single { WorldRebootNotifyHandler(get()) }
@@ -307,6 +357,49 @@ object CentralApplication {
                     socialService = get(),
                     worldListCache = get(),
                     ttlMillis = config.session.ttlMs,
+                    scheduler = get(),
+                )
+            }
+            single { ExchangeConfigProvider(get()) }
+            single { ExchangeEngine(get(), get<ExchangeConfigProvider>()) }
+            single { MarketPriceService(get(), get<ExchangeConfigProvider>()) }
+            single<AlertNotifier> {
+                DiscordAlertNotifier(
+                    bot = get<DiscordRuntime.Components>().botService,
+                    channelId = get<DiscordRuntimeConfig>().exchangeAlertChannelId,
+                )
+            }
+            single { AlertService(get(), get()) }
+            single { DetectionService(get(), get<ExchangeConfigProvider>(), get()) }
+            single { MarketAlertService(get(), get<ExchangeConfigProvider>(), get()) }
+            single { ReconciliationService(get(), get()) }
+            single { StatsRollupService(get()) }
+            single { EconomySnapshotService(get()) }
+            single { SystemLiquidityService(get(), get(), get<ExchangeConfigProvider>(), get()) }
+            single { SinkFaucetService(get(), get<ExchangeConfigProvider>(), get()) }
+            single { MetricsAlertService(get<ExchangeConfigProvider>(), get()) }
+            single { StaffQueryService(get()) }
+            single { FreezeService(get(), get()) }
+            single { ReversalService(get()) }
+            single { SeedTradeService(get(), get<ExchangeConfigProvider>()) }
+            single { ExchangeConfigService(get(), get<ExchangeConfigProvider>()) }
+            single { ItemAdminService(get(), get<ExchangeEngine>(), get<ExchangeConfigProvider>(), get()) }
+            single {
+                OsrsItemImporter(get())
+            }
+            single {
+                ExchangeJobs(
+                    engine = get(),
+                    pricing = get(),
+                    detection = get(),
+                    marketAlerts = get(),
+                    reconciliation = get(),
+                    rollup = get(),
+                    snapshots = get(),
+                    liquidity = get(),
+                    sinkFaucet = get(),
+                    metrics = get(),
+                    config = get<ExchangeConfigProvider>(),
                     scheduler = get(),
                 )
             }

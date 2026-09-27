@@ -3,6 +3,8 @@ package dev.or2.central.config
 data class DiscordRuntimeConfig(
     val botToken: String = "",
     val guildId: Long = 0L,
+    /** Channel new Trading Post staff alerts go to. Zero keeps them out of Discord. */
+    val exchangeAlertChannelId: Long = 0L,
     val buttonPrefix: String = "discordlink:",
     val codeButtonCount: Int = 20,
     val pendingTtlMinutes: Long = 15,
@@ -17,6 +19,7 @@ internal fun resolveDiscordRuntimeConfig(): DiscordRuntimeConfig {
     return DiscordRuntimeConfig(
         botToken = settings.botToken,
         guildId = settings.guildId,
+        exchangeAlertChannelId = settings.exchangeAlertChannelId,
         pendingTtlMinutes = settings.pendingTtlMinutes,
         maxWrongAttempts = settings.maxWrongAttempts,
     )

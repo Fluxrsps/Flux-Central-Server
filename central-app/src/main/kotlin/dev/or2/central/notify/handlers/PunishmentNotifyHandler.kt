@@ -1,5 +1,7 @@
 package dev.or2.central.notify.handlers
 
+import dev.or2.central.exchange.ExchangeEngine
+import dev.or2.central.exchange.model.CancelReason
 import dev.or2.central.notify.NotifyBroadcaster
 import dev.or2.central.notify.NotifyJson
 import dev.or2.central.notify.NotifyJson.int
@@ -14,6 +16,7 @@ import org.slf4j.LoggerFactory
 @PgNotifyChannel("punishment_events")
 class PunishmentNotifyHandler(
     private val broadcaster: NotifyBroadcaster,
+    private val exchange: ExchangeEngine? = null,
 ) : PgNotifyHandler {
     private val log = LoggerFactory.getLogger(PunishmentNotifyHandler::class.java)
 
@@ -31,6 +34,17 @@ class PunishmentNotifyHandler(
             )
         }.onFailure {
             log.warn("Failed punishment revoke for {}", accountId, it)
+        }
+        // A ban parks the character's Trading Post assets in their collection box; the box itself
+        // stays locked by the ban check on claims until the punishment is lifted.
+        runCatching {
+            val engine = exchange ?: return
+            val cancelled =
+                if (root.string("scope") == "character" && characterId > 0) engine.cancelAllLive(characterId, CancelReason.BANNED)
+                else engine.cancelAllForAccount(accountId, CancelReason.BANNED)
+            if (cancelled > 0) log.info("cancelled {} Trading Post orders for banned account {}", cancelled, accountId)
+        }.onFailure {
+            log.warn("Failed Trading Post cancellation for banned account {}", accountId, it)
         }
     }
 }

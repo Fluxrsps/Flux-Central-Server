@@ -8,6 +8,7 @@ import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.OnlineStatus
 import net.dv8tion.jda.api.entities.Activity
+import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.requests.GatewayIntent
 import net.dv8tion.jda.api.utils.cache.CacheFlag
 import net.dv8tion.jda.api.utils.MemberCachePolicy
@@ -81,6 +82,34 @@ class DiscordBotService(
         log.info("Shutting down Discord bot...")
         bot.shutdown()
         jda = null
+    }
+
+    /**
+     * Posts an embed to a channel, if the bot is connected and can see it.
+     *
+     * Reports failure rather than throwing: callers here are announcing something already
+     * recorded elsewhere, so a Discord outage must not take them down with it. The send is queued,
+     * so this does not block the caller.
+     */
+    fun sendEmbed(channelId: Long, embed: MessageEmbed): Boolean {
+        if (channelId <= 0L) {
+            return false
+        }
+
+        val channel = jda?.getTextChannelById(channelId)
+
+        if (channel == null) {
+            log.warn("Discord channel {} unavailable; message dropped", channelId)
+            return false
+        }
+
+        return runCatching {
+            channel.sendMessageEmbeds(embed).queue(
+                null,
+                { error -> log.warn("Discord message to {} failed: {}", channelId, error.message) },
+            )
+        }.onFailure { log.warn("Discord message to {} could not be queued", channelId, it) }
+            .isSuccess
     }
 
     private fun updatePresence(bot: JDA) {

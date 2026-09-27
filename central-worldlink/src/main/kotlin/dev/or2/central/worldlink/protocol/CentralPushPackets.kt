@@ -27,6 +27,27 @@ object CentralPushPackets {
         val discordId: String,
     )
 
+    data class ExchangeNotify(
+        val characterId: Int,
+        val notificationId: Long,
+        val kind: String,
+        val orderId: Long,
+        val objId: Int,
+        val payloadJson: String,
+    )
+
+    fun decodeExchangeNotify(frame: ByteArray): ExchangeNotify =
+        readBody(frame).use { r ->
+            ExchangeNotify(
+                characterId = r.readInt(),
+                notificationId = r.readLong(),
+                kind = r.readUtf8LenPrefixed(),
+                orderId = r.readLong(),
+                objId = r.readInt(),
+                payloadJson = r.readUtf8LenPrefixed(),
+            )
+        }
+
     fun decodeRevokeLogin(frame: ByteArray): RevokeLogin =
         readBody(frame).use { r ->
             RevokeLogin(r.readLong(), r.readInt())

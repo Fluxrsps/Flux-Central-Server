@@ -76,6 +76,19 @@ tasks.named<JavaExec>("run") {
     workingDir = rootProject.layout.projectDirectory.asFile
 }
 
+/**
+ * Seeds exchange_items from the OSRS real-time prices API. Re-runnable; run it after a database
+ * reset. Pass `--args="--overwrite"` to replace hand-tuned base prices and limits too, or
+ * `--args="--f2p"` to skip members items.
+ */
+tasks.register<JavaExec>("importOsrsItems") {
+    group = "application"
+    description = "Seed Trading Post items (base prices, buy limits, alch values) from the OSRS prices API."
+    mainClass.set("dev.or2.central.exchange.OsrsItemImportMain")
+    classpath = sourceSets.main.get().runtimeClasspath
+    workingDir = rootProject.layout.projectDirectory.asFile
+}
+
 tasks.named<ShadowJar>("shadowJar") {
     archiveFileName.set("openrune-central-server.jar")
     mergeServiceFiles()

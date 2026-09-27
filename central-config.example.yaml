@@ -50,6 +50,12 @@ openrune:
   devWorld:
     autoCreate: true
 
+  # The Trading Post has nothing to set here. Its endpoints are Fluxious' own CDN and the OSRS
+  # prices API, so they are constants in the code (ExchangeEndpoints). Staff alerts go out through
+  # the Discord bot Central already runs: set exchange-alert-channel-id in discord-settings.yml.
+  # Item seeding fills exchange_items whenever the table is empty, and can be re-run by hand with
+  # gradlew :central-app:importOsrsItems [--args="--overwrite"].
+
   # Per-phase login timing (Central LOGIN detail, world-link auth). Default off.
   # diagnostics:
   #   loginTimingLogs: true

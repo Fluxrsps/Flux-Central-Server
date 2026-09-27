@@ -41,6 +41,8 @@ object WorldOpcodes {
     const val GAME_DISCORD_LINK_PENDING_FAIL_UNAVAILABLE: Int = 4
     const val GAME_DISCORD_LINK_USERNAME_MAX_UTF8: Int = 128
 
+    const val OP_SERVER_EXCHANGE_NOTIFY: Int = 83
+
     const val OP_WORLD_PM_RELAY: Int = 96
     const val OP_WORLD_FRIEND_ADD: Int = 97
     const val OP_WORLD_FRIEND_DEL: Int = 98
