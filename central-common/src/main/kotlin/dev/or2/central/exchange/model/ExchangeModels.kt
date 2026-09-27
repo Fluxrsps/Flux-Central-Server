@@ -87,6 +87,9 @@ data class PlayerOrderHistory(
     val createdAt: Instant,
     val taxPaid: Long,
     val averagePrice: Long?,
+    val slot: Int?,
+    val owedItems: Long,
+    val owedGp: Long,
 )
 
 data class ExchangeOrder(
@@ -106,6 +109,9 @@ data class ExchangeOrder(
     val world: Int,
     val createdAt: Instant,
     val expiresAt: Instant?,
+    val slot: Int?,
+    val owedItems: Long = 0,
+    val owedGp: Long = 0,
 ) {
     val remainingQuantity: Long
         get() = quantity - filledQuantity
@@ -131,6 +137,19 @@ data class ExchangeTrade(
     val executedAt: Instant,
 )
 
+data class CollectionSlot(
+    val orderId: Long,
+    val objId: Int,
+    val side: Side,
+    val quantity: Long,
+    val filledQuantity: Long,
+    val limitPrice: Long,
+    val status: OrderStatus,
+    val slot: Int?,
+    val owedItems: Long,
+    val owedGp: Long,
+)
+
 data class CollectionBox(val items: Map<Int, Long>, val gp: Long) {
     val isEmpty: Boolean
         get() = items.isEmpty() && gp == 0L
@@ -152,6 +171,7 @@ data class ExchangeClaim(
     val clientRequestId: String,
     val correlationId: UUID,
     val createdAt: Instant,
+    val orderId: Long?,
 )
 
 enum class FreezeScope { GLOBAL, ITEM, ACCOUNT }
@@ -177,6 +197,7 @@ data class CreateOrderRequest(
     val world: Int = 0,
     val expiresAt: Instant? = null,
     val createdBy: Int? = null,
+    val slot: Int? = null,
 )
 
 sealed interface CreateOrderResult {

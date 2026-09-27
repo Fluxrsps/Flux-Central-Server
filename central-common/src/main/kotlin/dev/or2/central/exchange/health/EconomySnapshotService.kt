@@ -9,11 +9,6 @@ import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 import javax.sql.DataSource
 
-/**
- * The daily macro picture, Parts H2 and P12: GP and items locked in the exchange, tax sunk,
- * system faucet and sink, traders and orders, and a volume-weighted price index of today's
- * traded items as an inflation indicator. Rewritten in place for the current day.
- */
 class EconomySnapshotService(private val dataSource: DataSource, private val clock: Clock = Clock.systemUTC()) {
     fun snapshot(): LocalDate {
         val now = clock.instant()

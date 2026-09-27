@@ -10,11 +10,6 @@ import javax.sql.DataSource
 
 typealias Row = Map<String, Any?>
 
-/**
- * Backend query services for staff, Part H4 and P6. Private data (identities, counterparties)
- * lives only here; nothing in this class is safe to expose publicly. Results are plain column
- * maps so the eventual admin surface can render them without a model class per query.
- */
 class StaffQueryService(private val dataSource: DataSource) {
     fun marketOverview(since: Instant): Row =
         one(
@@ -134,10 +129,6 @@ class StaffQueryService(private val dataSource: DataSource) {
             "flags" to many("SELECT * FROM exchange_flags WHERE trade_id = ?", tradeId),
         )
 
-    /**
-     * Follows GP or items a few hops out from a trade: what the parties did with the same item
-     * next (sold on, cancelled, claimed) and where the seller's proceeds went.
-     */
     fun followTrade(tradeId: Long, hops: Int = 2): List<Row> {
         val trade = one("SELECT buyer_character_id, seller_character_id, obj_id, executed_at FROM exchange_trades WHERE id = ?", tradeId)
         val buyer = trade["buyer_character_id"] as? Int ?: return emptyList()

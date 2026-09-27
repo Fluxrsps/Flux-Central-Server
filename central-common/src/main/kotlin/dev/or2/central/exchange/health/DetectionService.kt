@@ -12,12 +12,6 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import javax.sql.DataSource
 
-/**
- * Suspicious-trade detection, Part H1. Flags, never blocks: each detector writes rows to
- * exchange_flags for staff review and raises one SUSPICIOUS_PATTERN alert per item touched.
- * Linked-account detection is not implemented because the project does not track shared
- * IPs or devices; the flag kind exists for when it does.
- */
 class DetectionService(
     private val dataSource: DataSource,
     private val config: () -> ExchangeConfig,

@@ -11,12 +11,6 @@ import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 import javax.sql.DataSource
 
-/**
- * Whole-economy GP faucets versus sinks for the current day, Part F9 and H3. Faucets are alchemy,
- * shop sell-backs, coin drops and what the system liquidity paid out; sinks are shop purchases,
- * coins destroyed or despawned, exchange tax, and what the system took in. Raises
- * SINK_FAUCET_IMBALANCE when faucets outrun sinks by the configured ratio above a minimum size.
- */
 class SinkFaucetService(
     private val dataSource: DataSource,
     private val config: () -> ExchangeConfig,

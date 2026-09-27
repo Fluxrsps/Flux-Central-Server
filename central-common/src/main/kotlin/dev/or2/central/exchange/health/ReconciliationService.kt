@@ -6,11 +6,6 @@ import java.sql.Connection
 import java.time.Clock
 import javax.sql.DataSource
 
-/**
- * Conservation checks, Part J2. Every check is a set-based query that returns only the rows that
- * disagree, so a clean run is cheap. A mismatch is a critical alert and, when it points at an
- * item, an automatic freeze on that item until staff have looked.
- */
 class ReconciliationService(
     private val dataSource: DataSource,
     private val alerts: AlertService,
@@ -37,6 +32,8 @@ class ReconciliationService(
                 found += query(conn, "recon_gp_ledger", "GP_LEDGER") { rs -> Mismatch("GP_LEDGER", rs.getInt(1), 0, rs.getLong(2), rs.getLong(3)) }
                 found += query(conn, "recon_items_ledger", "ITEMS_LEDGER") { rs -> Mismatch("ITEMS_LEDGER", rs.getInt(1), 0, rs.getLong(2), rs.getLong(3)) }
                 found += query(conn, "recon_items_custody", "ITEMS_CUSTODY") { rs -> Mismatch("ITEMS_CUSTODY", rs.getInt(1), 0, rs.getLong(2), rs.getLong(3)) }
+                found += query(conn, "recon_owed_items", "OWED_ITEMS") { rs -> Mismatch("OWED_ITEMS", rs.getInt(1), rs.getLong(2), rs.getLong(3), rs.getLong(4)) }
+                found += query(conn, "recon_owed_gp", "OWED_GP") { rs -> Mismatch("OWED_GP", 0, rs.getLong(1), rs.getLong(2), rs.getLong(3)) }
                 conn.prepareStatement(OpenRuneSql.text("central/exchange/recon_gp_custody.sql")).use { ps ->
                     ps.executeQuery().use { rs ->
                         if (rs.next() && rs.getLong(1) != rs.getLong(2)) {
@@ -63,9 +60,6 @@ class ReconciliationService(
             }
         }
         val duration = (System.nanoTime() - started) / 1_000_000
-        if (found.isEmpty()) {
-            log.info("exchange reconciliation clean in {} ms", duration)
-        }
         return Report(found, duration)
     }
 

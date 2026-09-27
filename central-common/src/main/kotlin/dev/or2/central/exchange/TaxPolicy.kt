@@ -1,10 +1,5 @@
 package dev.or2.central.exchange
 
-/**
- * Seller-side tax, computed per unit so the total is the same however an order is split into
- * fills. Integer maths only; the split form of floor(price * bps / 10000) stays exact without
- * overflowing for any price that fits a BIGINT.
- */
 object TaxPolicy {
     const val BPS_SCALE: Long = 10_000
 

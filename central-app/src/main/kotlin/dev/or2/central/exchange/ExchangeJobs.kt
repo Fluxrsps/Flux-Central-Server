@@ -14,10 +14,6 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * The always-on half of the Trading Post. Every job runs on Central's shared scheduler, skips a
- * tick rather than overlap itself, and logs rather than throws.
- */
 class ExchangeJobs(
     private val engine: ExchangeEngine,
     private val pricing: MarketPriceService,
@@ -35,6 +31,9 @@ class ExchangeJobs(
     private val expiryIntervalSeconds: Long = 30,
 ) {
     private val log = LoggerFactory.getLogger(ExchangeJobs::class.java)
+
+    private val verbose: Boolean
+        get() = config().ops.verboseLogging
     private val running = java.util.concurrent.ConcurrentHashMap<String, AtomicBoolean>()
 
     fun start() {
@@ -67,37 +66,41 @@ class ExchangeJobs(
 
     fun sweepOnce() {
         val fills = engine.sweep()
-        if (fills > 0) log.info("exchange sweep made {} fills", fills)
+        if (fills > 0 && verbose) log.info("exchange sweep made {} fills", fills)
     }
 
     fun expireOnce() {
         val expired = engine.expireDue()
-        if (expired > 0) log.info("exchange expired {} orders", expired)
+        if (expired > 0 && verbose) log.info("exchange expired {} orders", expired)
     }
 
     fun repriceOnce() {
         val s = pricing.recomputeAll()
-        log.info("market prices: {} items, {} changed, {} skipped, {} failed", s.processed, s.changed, s.skipped, s.failed)
+        if (verbose) log.info("market prices: {} items, {} changed, {} skipped, {} failed", s.processed, s.changed, s.skipped, s.failed)
     }
 
     fun rollupOnce() {
         val days = rollup.run()
-        if (days > 0) log.info("exchange rollup rebuilt {} item-days", days)
+        if (days > 0 && verbose) log.info("exchange rollup rebuilt {} item-days", days)
     }
 
     fun detectOnce() {
         val s = detection.run()
-        if (s.total > 0) log.info("exchange detection flagged {} (far={}, pairing={}, wash={}, corner={}, cancel={})", s.total, s.farFromMarket, s.repeatedPairing, s.washTrading, s.cornering, s.rapidCancel)
+        if (s.total > 0 && verbose) log.info("exchange detection flagged {} (far={}, pairing={}, wash={}, corner={}, cancel={})", s.total, s.farFromMarket, s.repeatedPairing, s.washTrading, s.cornering, s.rapidCancel)
     }
 
     fun marketAlertsOnce() {
         val raised = marketAlerts.run()
-        if (raised > 0) log.info("exchange raised {} market alerts", raised)
+        if (raised > 0 && verbose) log.info("exchange raised {} market alerts", raised)
     }
 
     fun reconcileOnce() {
         val report = reconciliation.run()
-        if (!report.clean) log.error("exchange reconciliation found {} mismatches", report.mismatches.size)
+        if (!report.clean) {
+            log.error("exchange reconciliation found {} mismatches", report.mismatches.size)
+        } else if (verbose) {
+            log.info("exchange reconciliation clean in {} ms", report.durationMs)
+        }
     }
 
     fun snapshotOnce() {
@@ -106,7 +109,7 @@ class ExchangeJobs(
 
     fun liquidityOnce() {
         val s = liquidity.run()
-        if (s.items > 0) log.info("system liquidity: {} items, {} orders placed, {} skipped, {} wound down", s.items, s.placed, s.skipped, s.disabled)
+        if (s.items > 0 && verbose) log.info("system liquidity: {} items, {} orders placed, {} skipped, {} wound down", s.items, s.placed, s.skipped, s.disabled)
     }
 
     private fun guarded(name: String, block: () -> Unit) {

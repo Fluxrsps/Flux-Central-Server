@@ -12,24 +12,6 @@ import dev.or2.central.exchange.ops.OsrsItemImporter
 import javax.sql.DataSource
 import kotlin.system.exitProcess
 
-/**
- * Seeds `exchange_items` from the OSRS real-time prices API and exits. Run it after a database
- * reset, or whenever the live OSRS figures should be pulled again:
- *
- * ```
- * gradlew :central-app:importOsrsItems
- * gradlew :central-app:importOsrsItems --args="--overwrite"
- * gradlew :central-app:importOsrsItems --args="--jdbc-url=jdbc:postgresql://127.0.0.1:5432/openrune"
- * ```
- *
- * With no `--jdbc-url` it reads the same `central-config.yaml` the server does, which may mean
- * starting an embedded PostgreSQL. Pass the URL when the database is already running and owned by
- * something else - the game server's same-instance PostgreSQL, for one - so this never manages a
- * lifecycle it does not own.
- *
- * Safe against a live database: base prices and buy limits are only filled where they are null
- * unless `--overwrite` is passed.
- */
 object OsrsItemImportMain {
     @JvmStatic
     fun main(args: Array<String>) {
@@ -87,7 +69,6 @@ object OsrsItemImportMain {
     private fun Array<String>.value(flag: String): String? =
         firstOrNull { it.startsWith("$flag=") }?.substringAfter('=')?.takeIf { it.isNotBlank() }
 
-    /** A few familiar items, so an operator can see at a glance that the columns landed right. */
     private fun printSample(dataSource: DataSource) {
         val sample = listOf(4151 to "Abyssal whip", 385 to "Shark", 561 to "Nature rune", 20997 to "Twisted bow")
         dataSource.connection.use { conn ->

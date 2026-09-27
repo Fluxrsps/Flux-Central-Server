@@ -13,13 +13,6 @@ import java.time.temporal.ChronoUnit
 import java.util.UUID
 import javax.sql.DataSource
 
-/**
- * Compensating transactions, Part P5. Unwinds one fill without deleting history: the buyer's items
- * go back to the seller's collection box and the seller's net proceeds go back to the buyer's,
- * taken from each party's box as far as it holds them. Whatever a party no longer has is recorded
- * as a debt, never silently dropped. The trade keeps its row and gains a reversed_at stamp, which
- * removes it from price discovery; the hour's statistics are adjusted.
- */
 class ReversalService(private val dataSource: DataSource, private val clock: Clock = Clock.systemUTC()) {
     private val repo = ExchangeRepository()
 
@@ -52,8 +45,10 @@ class ReversalService(private val dataSource: DataSource, private val clock: Clo
             try {
                 val trade = lockTrade(conn, tradeId) ?: error("trade $tradeId not found")
                 if (trade.source == "SEEDED") error("seeded trades have nothing to reverse")
-                val itemsAvailable = repo.lockCollectionItems(conn, trade.buyer, trade.objId)
-                val gpAvailable = repo.lockCollectionGp(conn, trade.seller)
+                val buyOwed = repo.lockOwed(conn, trade.buyOrderId)?.items ?: 0
+                val sellOwed = repo.lockOwed(conn, trade.sellOrderId)?.gp ?: 0
+                val itemsAvailable = minOf(repo.lockCollectionItems(conn, trade.buyer, trade.objId), buyOwed)
+                val gpAvailable = minOf(repo.lockCollectionGp(conn, trade.seller), sellOwed)
                 val plan =
                     Plan(
                         tradeId = trade.id,
@@ -82,10 +77,14 @@ class ReversalService(private val dataSource: DataSource, private val clock: Clo
                 if (plan.itemsAvailable > 0) {
                     repo.debitCollectionItems(conn, trade.buyer, trade.objId, plan.itemsAvailable)
                     repo.creditCollectionItems(conn, trade.seller, trade.objId, plan.itemsAvailable)
+                    check(repo.debitOwed(conn, trade.buyOrderId, plan.itemsAvailable, 0)) { "reversal of trade ${trade.id}: buy order ${trade.buyOrderId} owed drift" }
+                    repo.creditOwed(conn, trade.sellOrderId, plan.itemsAvailable, 0)
                 }
                 if (plan.gpAvailable > 0) {
                     repo.debitCollectionGp(conn, trade.seller, plan.gpAvailable)
                     repo.creditCollectionGp(conn, trade.buyer, plan.gpAvailable)
+                    check(repo.debitOwed(conn, trade.sellOrderId, 0, plan.gpAvailable)) { "reversal of trade ${trade.id}: sell order ${trade.sellOrderId} owed drift" }
+                    repo.creditOwed(conn, trade.buyOrderId, 0, plan.gpAvailable)
                 }
                 if (plan.itemsShortfall > 0) insertDebt(conn, trade.buyer, reversalId, trade.objId, plan.itemsShortfall, 0, now)
                 if (plan.gpShortfall > 0) insertDebt(conn, trade.seller, reversalId, null, 0, plan.gpShortfall, now)

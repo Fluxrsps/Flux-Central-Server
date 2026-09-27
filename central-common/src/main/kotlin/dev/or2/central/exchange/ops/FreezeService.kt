@@ -13,11 +13,6 @@ import java.time.ZoneOffset
 import java.util.UUID
 import javax.sql.DataSource
 
-/**
- * Kill switches, Part P4. A freeze takes effect on the next request because every create, match
- * and claim path reads the table. Global and item freezes leave cancels and claims working so
- * nobody's assets are trapped; an account freeze blocks claims too, pending investigation.
- */
 class FreezeService(
     private val dataSource: DataSource,
     private val engine: ExchangeEngine,
@@ -36,7 +31,6 @@ class FreezeService(
         val createdAt: Instant,
     )
 
-    /** Returns false when the target was already frozen. With [holdOrders] false, live orders are cancelled and refunded. */
     fun apply(scope: FreezeScope, targetId: Long, reasonCode: String, reason: String, staffCharacterId: Int?, holdOrders: Boolean = true): Boolean {
         require(reason.isNotBlank()) { "a freeze needs a reason" }
         require((scope == FreezeScope.GLOBAL) == (targetId == 0L)) { "GLOBAL takes target 0; ITEM and ACCOUNT need a target" }

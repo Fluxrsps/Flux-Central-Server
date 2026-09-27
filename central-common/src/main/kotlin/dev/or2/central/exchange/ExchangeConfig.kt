@@ -254,6 +254,9 @@ data class LiquidityConfig(
  * - launchDefaultHours 168 and launchDefaultBuyLimit 100: one week of a small limit for new items.
  * - latencyP95AlertMs 1000 / retriesPerMinuteAlert 30: contention is usually the first symptom.
  * - shutdownIntakeCloseSeconds 20 / shutdownAllCloseSeconds 5: the spec's update window.
+ * - verboseLogging false: every order, fill and job run has a log line behind this, off because
+ *   the same facts are already in `exchange_events` and the metrics counters. Turn it on to watch
+ *   the exchange work; it picks up within the config TTL, no restart.
  */
 @Serializable
 data class OpsConfig(
@@ -268,6 +271,7 @@ data class OpsConfig(
     val metricsIntervalMinutes: Int = 1,
     val shutdownIntakeCloseSeconds: Int = 20,
     val shutdownAllCloseSeconds: Int = 5,
+    val verboseLogging: Boolean = false,
 ) {
     fun validate(): OpsConfig {
         require(rateLimitOrdersPerMinute >= 1 && rateLimitCancelsPerMinute >= 1) { "rate limits must be >= 1" }

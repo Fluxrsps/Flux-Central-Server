@@ -21,16 +21,10 @@ data class ExchangeAlert(
     val lastSeenAt: Instant,
 )
 
-/** Where new alerts go besides the table. Never throws into the caller. */
 fun interface AlertNotifier {
     fun notify(alert: ExchangeAlert)
 }
 
-/**
- * Staff alerts, Part H3. De-duplicated in the database (one open alert per kind and item), so a
- * detector can raise the same condition every run and staff hear about it once. Alerts never
- * change prices or orders.
- */
 class AlertService(
     private val dataSource: DataSource,
     private val notifier: AlertNotifier = AlertNotifier { },
@@ -38,7 +32,6 @@ class AlertService(
 ) {
     private val log = LoggerFactory.getLogger(AlertService::class.java)
 
-    /** Raises or refreshes an alert. Returns true when it is new. */
     fun raise(kind: String, objId: Int, severity: AlertSeverity, details: String): Boolean =
         dataSource.connection.use { conn -> raise(conn, kind, objId, severity, details) }
 
@@ -97,7 +90,6 @@ class AlertService(
             }
         }
 
-    /** Applies an ITEM freeze unless one is already active. Used by reconciliation on a mismatch. */
     fun freezeItem(conn: Connection, objId: Int, reasonCode: String, reason: String) {
         conn.prepareStatement(OpenRuneSql.text("central/exchange/freeze_insert_if_absent.sql")).use { ps ->
             ps.setString(1, "ITEM")

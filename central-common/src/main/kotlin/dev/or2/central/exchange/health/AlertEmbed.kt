@@ -7,12 +7,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
 import java.time.Instant
 
-/**
- * How an alert reads when shown to staff, with nothing about how it is delivered.
- *
- * Kept apart from the sender so the wording and colours can be tested without a Discord
- * connection, and so a second destination would not have to restate any of it.
- */
 data class AlertEmbed(
     val title: String,
     val description: String,
@@ -64,7 +58,6 @@ class AlertEmbedFactory(private val catalog: ExchangeItemCatalog = ExchangeItemC
         )
     }
 
-    /** Details are a JSON blob; anything that will not parse is shown as it was written. */
     private fun fields(raw: String): List<AlertEmbed.Field> {
         val details: JsonObject? = runCatching { json.parseToJsonElement(raw).jsonObject }.getOrNull()
 

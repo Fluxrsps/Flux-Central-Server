@@ -1,12 +1,13 @@
--- Params: obj_id, base_price, buy_limit, high_alch, shop_value, overwrite, overwrite.
+-- Params: obj_id, base_price, buy_limit, high_alch, shop_value, tax_exempt, overwrite, overwrite.
 --
 -- base_price and buy_limit are filled only while they are null, so a re-import after a database
 -- reset restores everything but never clobbers a value staff set by hand; pass overwrite to
 -- replace them too. high_alch_value and shop_sell_value are cache facts, so a known value always
 -- wins and a zero means "no data, leave what is there".
-INSERT INTO exchange_items (obj_id, base_price, buy_limit, high_alch_value, shop_sell_value)
-VALUES (?, ?, ?, COALESCE(?, 0), COALESCE(?, 0))
+INSERT INTO exchange_items (obj_id, base_price, buy_limit, high_alch_value, shop_sell_value, tax_exempt)
+VALUES (?, ?, ?, COALESCE(?, 0), COALESCE(?, 0), ?)
 ON CONFLICT (obj_id) DO UPDATE SET
+    tax_exempt = exchange_items.tax_exempt OR EXCLUDED.tax_exempt,
     base_price = CASE WHEN ? OR exchange_items.base_price IS NULL
                       THEN COALESCE(EXCLUDED.base_price, exchange_items.base_price)
                       ELSE exchange_items.base_price END,

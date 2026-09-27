@@ -8,7 +8,6 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import javax.sql.DataSource
 
-/** Rolls hourly buckets into daily ones, Part G2. Rebuilds any (item, day) whose hours changed. */
 class StatsRollupService(
     private val dataSource: DataSource,
     private val clock: Clock = Clock.systemUTC(),

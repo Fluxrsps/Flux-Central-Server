@@ -9,16 +9,6 @@ import java.util.concurrent.Executors
 import net.dv8tion.jda.api.EmbedBuilder
 import org.slf4j.LoggerFactory
 
-/**
- * Announces new Trading Post alerts through the Discord bot Central already runs.
- *
- * Uses the bot rather than a webhook: the connection, token and guild are configured once for
- * everything Central says on Discord, and a webhook would have been a second credential to keep
- * and rotate for no extra reach.
- *
- * Alerts are built and sent on their own thread. The alert row is the record of what happened, so
- * a slow or unreachable Discord is logged and dropped rather than allowed to hold up a job.
- */
 class DiscordAlertNotifier(
     private val bot: DiscordBotService,
     private val channelId: Long,

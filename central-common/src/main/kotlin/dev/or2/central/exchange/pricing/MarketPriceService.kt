@@ -9,11 +9,6 @@ import java.time.Duration
 import java.util.UUID
 import javax.sql.DataSource
 
-/**
- * Runs the [MarketPriceCalculator] over every unfrozen item and stores the result with its
- * inputs. One transaction per item, so a bad row cannot hold up the rest. Never touches orders,
- * trades or settlement.
- */
 class MarketPriceService(
     private val dataSource: DataSource,
     private val config: () -> ExchangeConfig = { ExchangeConfig.DEFAULT },

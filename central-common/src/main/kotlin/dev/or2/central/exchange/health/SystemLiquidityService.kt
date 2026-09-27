@@ -20,13 +20,6 @@ import java.time.temporal.ChronoUnit
 import java.util.UUID
 import javax.sql.DataSource
 
-/**
- * Launch liquidity, Part I / Q3. Keeps one SYSTEM BUY and one SYSTEM SELL on the book for each
- * enabled item, priced a wide spread away from the stable market price so any reasonable player
- * order is filled first. Replaced idempotently each run: the request id is derived from the item,
- * side and hour, so a rerun in the same hour changes nothing. Caps are enforced by the engine at
- * settlement; this job only sizes the orders. Off by default.
- */
 class SystemLiquidityService(
     private val dataSource: DataSource,
     private val engine: ExchangeEngine,
@@ -143,7 +136,6 @@ class SystemLiquidityService(
         }
     }
 
-    /** Once per day: count days the players carried the item; switch the system off after enough of them. */
     private fun windDown(objId: Int, liquidity: ExchangeRepository.LiquidityRow, share: Double?, cfg: ExchangeConfig, now: Instant): Boolean {
         if (liquidity.pinned || share == null) return false
         val dayStart = now.truncatedTo(ChronoUnit.DAYS)
@@ -179,7 +171,9 @@ class SystemLiquidityService(
         }
         if (disable) {
             retireOthers(objId, emptySet())
-            log.info("system liquidity for item {} wound down after {} days", objId, streak)
+            if (config().ops.verboseLogging) {
+                log.info("system liquidity for item {} wound down after {} days", objId, streak)
+            }
         }
         return disable
     }

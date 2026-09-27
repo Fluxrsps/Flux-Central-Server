@@ -37,7 +37,6 @@ data class MarketPriceInputs(
     val now: Instant,
 )
 
-/** Everything the algorithm decided and why; stored verbatim in the history table. */
 data class MarketPriceResult(
     val objId: Int,
     val oldPrice: Long,

@@ -18,14 +18,6 @@ import java.time.ZoneOffset
 import java.util.UUID
 import javax.sql.DataSource
 
-/**
- * Validated writes to `exchange_config`, Part L.
- *
- * A bad economic parameter is not a cosmetic problem - a negative tax rate or a hundred percent
- * max change would misprice the whole market - so nothing is stored until the resulting
- * configuration has been built and validated in full. Every change keeps its previous value, who
- * made it and why.
- */
 class ExchangeConfigService(
     private val dataSource: DataSource,
     private val provider: ExchangeConfigProvider? = null,
@@ -35,7 +27,6 @@ class ExchangeConfigService(
     private val json = Json { ignoreUnknownKeys = true }
     private val defaultsJson = Json { encodeDefaults = true }
 
-    /** Every key that may be set, with the value currently in force and the shipped default. */
     fun describe(): Map<String, Setting> {
         val defaults = defaultsJson.encodeToJsonElement(ExchangeConfig.DEFAULT).jsonObject
         val stored = loadRaw()
@@ -57,11 +48,6 @@ class ExchangeConfigService(
 
     fun current(): ExchangeConfig = provider?.invoke() ?: ExchangeConfigLoader.load(dataSource)
 
-    /**
-     * Sets one key. [rawValue] is JSON: `200`, `true`, `[1,6,24]`, `{"HIGH_VALUE":100}`, or a
-     * nested object for the grouped sections. Throws if the key is unknown or the result fails
-     * validation, and nothing is written in that case.
-     */
     fun set(key: String, rawValue: String, staffCharacterId: Int?, reason: String) {
         require(reason.isNotBlank()) { "a config change needs a reason" }
         val defaults = defaultsJson.encodeToJsonElement(ExchangeConfig.DEFAULT).jsonObject
@@ -71,8 +57,6 @@ class ExchangeConfigService(
             runCatching { json.parseToJsonElement(rawValue) }
                 .getOrElse { throw IllegalArgumentException("'$rawValue' is not valid JSON for '$key'") }
 
-        // Build the whole configuration with this key replaced and validate it before storing, so
-        // a value that would break the engine is refused here rather than at the next reload.
         val proposed = loadRaw().toMutableMap().apply { this[key] = parsed }
         runCatching { ExchangeConfigLoader.merge(proposed) }
             .getOrElse { throw IllegalArgumentException("'$key' = $rawValue is not valid: ${it.message}") }
@@ -81,7 +65,6 @@ class ExchangeConfigService(
         write(key, parsed, previous, staffCharacterId, reason)
     }
 
-    /** Removes an override so the shipped default applies again. */
     fun reset(key: String, staffCharacterId: Int?, reason: String) {
         require(reason.isNotBlank()) { "a config change needs a reason" }
         val previous = loadRaw()[key] ?: return

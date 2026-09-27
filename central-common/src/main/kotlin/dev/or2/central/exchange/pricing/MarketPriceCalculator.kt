@@ -12,14 +12,6 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToLong
 
-/**
- * The Fluxious market price, Part F of the spec. Pure: inputs in, an explained result out, no
- * database and no clock beyond `inputs.now`. Doubles are used internally; only the rounded
- * integer price is stored, so nothing here ever touches money.
- *
- *   clean trades -> VWAP (time-decayed) -> pressure from near-market depth -> confidence from
- *   distinct traders -> anchor to base price by (1 - confidence)^curve -> smooth -> clamp
- */
 class MarketPriceCalculator(private val config: PricingConfig = PricingConfig()) {
     fun compute(inputs: MarketPriceInputs): MarketPriceResult? {
         val cleaned = clean(inputs)
@@ -91,10 +83,6 @@ class MarketPriceCalculator(private val config: PricingConfig = PricingConfig())
 
     private class Cleaned(val kept: List<Weighted>, val excluded: Int)
 
-    /**
-     * Drops what must never move the price (self, linked, system, admin, reversed), then outliers
-     * unless enough distinct accounts agree, then caps any one account's share of the evidence.
-     */
     private fun clean(inputs: MarketPriceInputs): Cleaned {
         val windowStart = inputs.now.minus(Duration.ofHours(config.tradeWindowHours.toLong()))
         val seedCutoff = inputs.now.minus(Duration.ofDays(config.seedMaxAgeDays.toLong()))
@@ -141,11 +129,6 @@ class MarketPriceCalculator(private val config: PricingConfig = PricingConfig())
         return exp(-ln(2.0) * ageHours / config.vwapHalfLifeHours)
     }
 
-    /**
-     * Scales any account's trades down until its share of the remaining evidence is at most the
-     * cap. Shrinking one account shrinks the total, so it iterates a few times; with the cap
-     * below 100% this converges quickly.
-     */
     private fun capAccounts(weighted: List<Weighted>) {
         val cap = config.maxAccountWeightBps / 10_000.0
         if (cap >= 1.0) return

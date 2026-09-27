@@ -3,10 +3,6 @@ package dev.or2.central.exchange
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
-/**
- * Process-wide counters and a latency ring for the exchange, Part P2. Read by the metrics alert
- * job and the periodic log summary; reset never, deltas are the consumer's job.
- */
 object ExchangeMetrics {
     val ordersCreated = AtomicLong()
     val ordersCancelled = AtomicLong()

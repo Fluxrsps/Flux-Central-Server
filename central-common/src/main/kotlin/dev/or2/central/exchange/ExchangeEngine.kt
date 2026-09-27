@@ -5,6 +5,7 @@ import dev.or2.central.exchange.model.CancelResult
 import dev.or2.central.exchange.model.ClaimResult
 import dev.or2.central.exchange.model.ClaimStatus
 import dev.or2.central.exchange.model.CollectionBox
+import dev.or2.central.exchange.model.CollectionSlot
 import dev.or2.central.exchange.model.CreateOrderRequest
 import dev.or2.central.exchange.model.CreateOrderResult
 import dev.or2.central.exchange.model.ExchangeClaim
@@ -32,16 +33,6 @@ import java.time.temporal.ChronoUnit
 import java.util.UUID
 import javax.sql.DataSource
 
-/**
- * The Trading Post core: order lifecycle, matching, settlement, collection box and claims, all as
- * short PostgreSQL transactions on a shared database. Both the game worlds and Central drive this
- * class, so it holds no in-memory state beyond configuration.
- *
- * Locking model: an operation locks the order it was asked about with `FOR UPDATE`, then scans
- * the opposite book with `FOR UPDATE SKIP LOCKED`. Nothing ever waits on a lock another
- * transaction holds, so there is no deadlock ordering to maintain; a pair of orders that skip
- * each other is picked up by the next sweep.
- */
 class ExchangeEngine(
     private val dataSource: DataSource,
     private val config: () -> ExchangeConfig = { ExchangeConfig.DEFAULT },
@@ -50,6 +41,9 @@ class ExchangeEngine(
 ) {
     private val log = LoggerFactory.getLogger(ExchangeEngine::class.java)
     private val repo = ExchangeRepository()
+
+    private val verbose: Boolean
+        get() = config().ops.verboseLogging
 
     fun createOrder(request: CreateOrderRequest): CreateOrderResult {
         val cfg = config()
@@ -107,10 +101,12 @@ class ExchangeEngine(
                     ),
                 )
                 ExchangeMetrics.ordersCreated.incrementAndGet()
-                log.info(
-                    "exchange order created order={} correlation={} character={} item={} side={} qty={} limit={} source={}",
-                    order.id, order.correlationId, order.characterId, order.objId, order.side, order.quantity, order.limitPrice, order.source,
-                )
+                if (cfg.ops.verboseLogging) {
+                    log.info(
+                        "exchange order created order={} correlation={} character={} item={} side={} qty={} limit={} source={}",
+                        order.id, order.correlationId, order.characterId, order.objId, order.side, order.quantity, order.limitPrice, order.source,
+                    )
+                }
                 CreateOrderResult.Pending(order)
             }
         } catch (e: SQLException) {
@@ -122,7 +118,6 @@ class ExchangeEngine(
         }
     }
 
-    /** Second step of creation: the world has taken the assets, so the order goes live and is matched. */
     fun openOrder(orderId: Long, characterId: Int): OpenOrderResult =
         transact { conn ->
             val order = repo.lockOrder(conn, orderId) ?: return@transact OpenOrderResult.Rejected(RejectReason.NOT_FOUND)
@@ -147,11 +142,6 @@ class ExchangeEngine(
             OpenOrderResult.Opened(order.copy(status = OrderStatus.OPEN, reservedAmount = reserved))
         }
 
-    /**
-     * One bounded pass of matching for [orderId]: up to `maxFillsPerTransaction` fills against
-     * the best resting orders, all in one transaction. Returns the fills and the order as it
-     * stands afterwards.
-     */
     fun matchPass(orderId: Long): MatchPassResult {
         val started = System.nanoTime()
         try {
@@ -205,10 +195,12 @@ class ExchangeEngine(
                 val fill = settle(conn, incoming, resting, quantity, price, item, cfg, now)
                 fills += fill
                 ExchangeMetrics.fills.incrementAndGet()
-                log.info(
-                    "exchange fill trade={} correlation={} item={} qty={} price={} buy={} sell={} tax={}",
-                    fill.tradeId, incoming.correlationId, item.objId, quantity, price, fill.buyOrderId, fill.sellOrderId, fill.tax,
-                )
+                if (cfg.ops.verboseLogging) {
+                    log.info(
+                        "exchange fill trade={} correlation={} item={} qty={} price={} buy={} sell={} tax={}",
+                        fill.tradeId, incoming.correlationId, item.objId, quantity, price, fill.buyOrderId, fill.sellOrderId, fill.tax,
+                    )
+                }
                 incoming = incoming.afterFill(quantity, price)
                 resting = resting.afterFill(quantity, price)
             }
@@ -231,7 +223,6 @@ class ExchangeEngine(
             terminate(conn, order, OrderStatus.CANCELLED, reason, refund = order.reservedAmount, staffCharacterId, staffReason)
         }
 
-    /** Expires due orders in one batch, one transaction each. Returns how many were expired. */
     fun expireDue(): Int {
         val cfg = config()
         val ids = transact { conn -> repo.selectDueExpiry(conn, clock.instant(), cfg.expiryBatch) }
@@ -249,7 +240,6 @@ class ExchangeEngine(
         return expired
     }
 
-    /** Matches books the arrival-time pass missed. Returns the number of fills made. */
     fun sweep(): Int {
         val cfg = config()
         val ids = transact { conn -> repo.selectCrossableBuyOrders(conn, cfg.sweepBatch) }
@@ -267,14 +257,13 @@ class ExchangeEngine(
 
     fun collectionBox(characterId: Int): CollectionBox = transact { conn -> repo.readCollectionBox(conn, characterId) }
 
+    fun collectionSlots(characterId: Int): List<CollectionSlot> =
+        transact { conn -> repo.collectionSlots(conn, characterId) }
+
     fun findOrder(orderId: Long): ExchangeOrder? = transact { conn -> repo.findOrder(conn, orderId) }
 
     fun liveOrders(characterId: Int): List<ExchangeOrder> = transact { conn -> repo.selectLiveOrders(conn, characterId) }
 
-    /**
-     * First step of a claim: the assets leave the collection box and sit on a PENDING claim row.
-     * Debiting here rather than on completion is what stops two claims taking the same items.
-     */
     fun beginClaim(
         characterId: Int,
         clientRequestId: String,
@@ -283,6 +272,7 @@ class ExchangeEngine(
         gp: Long,
         world: Int = 0,
         correlationId: UUID = UUID.randomUUID(),
+        orderId: Long? = null,
     ): ClaimResult {
         if (clientRequestId.isBlank() || count < 0 || gp < 0 || (count == 0L && gp == 0L) || (count > 0) != (objId != null)) {
             return ClaimResult.Rejected(RejectReason.INVALID_INPUT)
@@ -295,6 +285,18 @@ class ExchangeEngine(
                 }
                 if (repo.accountFrozen(conn, characterId)) {
                     return@transact ClaimResult.Rejected(RejectReason.ACCOUNT_FROZEN)
+                }
+                if (orderId != null) {
+                    val owed = repo.lockOwed(conn, orderId)
+                    if (owed == null || owed.characterId != characterId) {
+                        return@transact ClaimResult.Rejected(RejectReason.NOT_OWNER)
+                    }
+                    if (owed.items < count || owed.gp < gp || (objId != null && owed.objId != objId)) {
+                        return@transact ClaimResult.Rejected(RejectReason.INSUFFICIENT_COLLECTION, "order")
+                    }
+                    if (!repo.debitOwed(conn, orderId, count, gp)) {
+                        return@transact ClaimResult.Rejected(RejectReason.INSUFFICIENT_COLLECTION, "order")
+                    }
                 }
                 if (objId != null) {
                     val held = repo.lockCollectionItems(conn, characterId, objId)
@@ -310,7 +312,7 @@ class ExchangeEngine(
                     }
                     repo.debitCollectionGp(conn, characterId, gp)
                 }
-                val claim = repo.insertClaim(conn, characterId, objId, count, gp, clientRequestId, correlationId, world, clock.instant())
+                val claim = repo.insertClaim(conn, characterId, objId, count, gp, clientRequestId, correlationId, world, clock.instant(), orderId)
                 repo.insertEvent(conn, claimEvent("CLAIM_STARTED", claim))
                 ClaimResult.Started(claim)
             }
@@ -323,7 +325,6 @@ class ExchangeEngine(
         }
     }
 
-    /** The world has handed the assets over. Idempotent: a finished claim is returned as-is. */
     fun completeClaim(claimId: Long): ExchangeClaim? =
         transact { conn ->
             val claim = repo.lockClaim(conn, claimId) ?: return@transact null
@@ -333,7 +334,6 @@ class ExchangeEngine(
             claim.copy(status = ClaimStatus.COMPLETE)
         }
 
-    /** The world could not hand the assets over; they go back into the box. Idempotent. */
     fun releaseClaim(claimId: Long): ExchangeClaim? =
         transact { conn ->
             val claim = repo.lockClaim(conn, claimId) ?: return@transact null
@@ -344,10 +344,6 @@ class ExchangeEngine(
             claim.copy(status = ClaimStatus.RELEASED)
         }
 
-    /**
-     * Login-time recovery. The player save says which two-step actions got as far as moving the
-     * player's assets; everything else stuck in PENDING is resolved the safe way.
-     */
     fun recover(characterId: Int, markers: RecoveryMarkers): List<RecoveryAction> {
         val cfg = config()
         val cutoff = clock.instant().minus(cfg.recoveryGrace)
@@ -359,7 +355,6 @@ class ExchangeEngine(
                 if (order.status != OrderStatus.PENDING || order.characterId != characterId) return@transact
                 val refund = if (id in markers.escrowOrderIds) order.expectedReservation(order.quantity) else 0L
                 if (refund > 0) {
-                    // The assets did leave the player, so the ledger records the reservation before its release.
                     repo.insertEvent(
                         conn,
                         event(
@@ -408,14 +403,9 @@ class ExchangeEngine(
     fun markNotificationsDelivered(ids: Collection<Long>, world: Int): Int =
         transact { conn -> repo.markNotificationsDelivered(conn, ids, world, clock.instant()) }
 
-    /** A player's own history: orders, fills, tax paid. Never counterparties. */
     fun playerHistory(characterId: Int, limit: Int = 50): List<PlayerOrderHistory> =
         transact { conn -> repo.playerHistory(conn, characterId, limit) }
 
-    /**
-     * Records a rejected request and flags the account once rejections look like probing or
-     * churn. Called by the world for anything it refused before reaching the database too.
-     */
     fun recordRejection(characterId: Int, reasonCode: String, world: Int = 0, detail: String? = null) {
         val cfg = config()
         transact { conn ->
@@ -441,7 +431,6 @@ class ExchangeEngine(
         }
     }
 
-    /** Cancels every live order in an item with [reason] (delisting, item freeze without hold). */
     fun cancelAllForItem(objId: Int, reason: CancelReason, staffCharacterId: Int? = null, staffReason: String? = null): Int {
         val ids = transact { conn -> repo.selectLiveOrderIdsByItem(conn, objId) }
         var cancelled = 0
@@ -451,13 +440,11 @@ class ExchangeEngine(
         return cancelled
     }
 
-    /** Cancels every live order of every character on an account (ban at account scope). */
     fun cancelAllForAccount(accountId: Long, reason: CancelReason): Int {
         val characters = transact { conn -> repo.charactersOfAccount(conn, accountId) }
         return characters.sumOf { cancelAllLive(it, reason) }
     }
 
-    /** Cancels every live order of a character with [reason], returning the assets to their collection box. */
     fun cancelAllLive(characterId: Int, reason: CancelReason, staffCharacterId: Int? = null, staffReason: String? = null): Int {
         val ids = transact { conn -> repo.selectLiveOrders(conn, characterId).filter { it.status.live }.map { it.id } }
         var cancelled = 0
@@ -532,6 +519,8 @@ class ExchangeEngine(
         repo.creditCollectionItems(conn, buyer.characterId, item.objId, quantity)
         repo.creditCollectionGp(conn, buyer.characterId, released)
         repo.creditCollectionGp(conn, seller.characterId, net)
+        repo.creditOwed(conn, buyer.id, quantity, released)
+        repo.creditOwed(conn, seller.id, 0, net)
 
         val correlation = incoming.correlationId
         repo.insertEvent(conn, ExchangeRepository.EventRow("TRADE_EXECUTED", buyer.characterId, buyer.id, tradeId, null, item.objId, quantity, gross, correlation, world = incoming.world, metadata = """{"seller_character_id":${seller.characterId},"sell_order_id":${seller.id},"unit_price":$price}"""))
@@ -546,7 +535,7 @@ class ExchangeEngine(
 
         val bucket = now.truncatedTo(ChronoUnit.HOURS)
         if (buyer.source == OrderSource.PLAYER) {
-            repo.addBuyLimitUsage(conn, buyer.characterId, item.objId, bucket, quantity)
+            repo.addBuyLimitUsage(conn, buyer.characterId, item.objId, now, quantity, cfg.buyLimitWindowHours)
         }
         val systemOrder = listOf(buyer, seller).firstOrNull { it.source == OrderSource.SYSTEM }
         if (systemOrder != null) {
@@ -583,6 +572,7 @@ class ExchangeEngine(
                 repo.creditCollectionItems(conn, order.characterId, order.objId, refund)
                 releasedItems = refund
             }
+            repo.creditOwed(conn, order.id, releasedItems, releasedGp)
             repo.insertEvent(conn, event("RESERVATION_RELEASED", order, quantity = releasedItems.takeIf { it > 0 }, amount = releasedGp.takeIf { it > 0 }))
         }
         repo.terminateOrder(conn, order.id, status, reason)
@@ -607,12 +597,14 @@ class ExchangeEngine(
                 """{"side":"${order.side}","remaining":${order.remainingQuantity},"reason":"${reason?.name ?: status.name}"}""",
             )
         }
-        val updated = order.copy(status = status, cancelReason = reason, reservedAmount = 0)
+        val updated = checkNotNull(repo.findOrder(conn, order.id)) { "order ${order.id} vanished during terminate" }
         if (status == OrderStatus.EXPIRED) ExchangeMetrics.ordersExpired.incrementAndGet() else ExchangeMetrics.ordersCancelled.incrementAndGet()
-        log.info(
-            "exchange order {} order={} correlation={} character={} item={} reason={} releasedGp={} releasedItems={}",
-            status, order.id, order.correlationId, order.characterId, order.objId, reason, releasedGp, releasedItems,
-        )
+        if (verbose) {
+            log.info(
+                "exchange order {} order={} correlation={} character={} item={} reason={} releasedGp={} releasedItems={}",
+                status, order.id, order.correlationId, order.characterId, order.objId, reason, releasedGp, releasedItems,
+            )
+        }
         return CancelResult.Cancelled(updated, releasedGp, releasedItems)
     }
 
@@ -623,13 +615,9 @@ class ExchangeEngine(
         if (claim.gp > 0) {
             repo.creditCollectionGp(conn, claim.characterId, claim.gp)
         }
+        claim.orderId?.let { repo.creditOwed(conn, it, claim.count, claim.gp) }
     }
 
-    /**
-     * How much a SYSTEM order may still trade right now: its item's hourly and daily caps, the
-     * counterparty's daily cap against the system, and the global daily GP (system buying) or
-     * item (system selling) cap. Enforced here, in settlement, not only when the order is placed.
-     */
     private fun systemAllowance(
         conn: Connection,
         systemOrder: ExchangeOrder,
@@ -665,7 +653,7 @@ class ExchangeEngine(
 
     private fun buyLimitRemaining(conn: Connection, buyer: ExchangeOrder, item: ExchangeItem, cfg: ExchangeConfig, now: Instant): Long {
         val limit = item.effectiveBuyLimit(now, cfg.defaultBuyLimit).toLong()
-        val used = repo.buyLimitUsed(conn, buyer.characterId, item.objId, now.minus(cfg.buyLimitWindow))
+        val used = repo.buyLimitUsed(conn, buyer.characterId, item.objId, now, cfg.buyLimitWindowHours)
         return limit - used
     }
 

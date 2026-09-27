@@ -23,13 +23,8 @@ import java.time.ZoneOffset
 import java.util.UUID
 import javax.sql.DataSource
 
-/**
- * Staff operations on items, Parts P8, P9 and the base price import. Every change is a ledger
- * event with the staff id and a reason.
- */
 class ItemAdminService(
     private val dataSource: DataSource,
-    /** Null in tooling that only seeds items; the paths that cancel orders require it. */
     private val engine: ExchangeEngine?,
     private val config: () -> ExchangeConfig,
     private val alerts: AlertService,
@@ -38,7 +33,6 @@ class ItemAdminService(
     private val repo = ExchangeRepository()
     private val json = Json { ignoreUnknownKeys = true }
 
-    /** Freezes the item and cancels every live order in it with a refund. History is kept. */
     fun delist(objId: Int, staffCharacterId: Int, reason: String): Int {
         require(reason.isNotBlank())
         val engine = checkNotNull(engine) { "delisting needs an exchange engine" }
@@ -75,10 +69,6 @@ class ItemAdminService(
         }
     }
 
-    /**
-     * New-item release protocol: a small buy limit for the launch window, price discovery until
-     * confidence builds, and a watch alert so staff look at it during its first week.
-     */
     fun launch(objId: Int, staffCharacterId: Int, reason: String, launchBuyLimit: Int? = null, hours: Int? = null, basePrice: Long? = null) {
         require(reason.isNotBlank())
         val cfg = config().ops
@@ -92,13 +82,13 @@ class ItemAdminService(
         }
     }
 
-    /** One item's seed values. Nulls mean "no data", never "clear what is there". */
     class ItemSeed(
         val objId: Int,
         val basePrice: Long? = null,
         val buyLimit: Int? = null,
         val highAlch: Long? = null,
         val shopValue: Long? = null,
+        val taxExempt: Boolean = false,
     ) {
         val empty: Boolean
             get() = basePrice == null && buyLimit == null && highAlch == null && shopValue == null
@@ -118,10 +108,6 @@ class ItemAdminService(
             }
         }
 
-    /**
-     * Imports `{"<objId>": {"base_price": n, "buy_limit": n}}`. Fills nulls only unless [overwrite],
-     * so a re-run after a cache update never clobbers a staff edit.
-     */
     fun importItems(jsonText: String, staffCharacterId: Int, reason: String, overwrite: Boolean = false): ImportSummary {
         val root = json.parseToJsonElement(jsonText).jsonObject
         var malformed = 0
@@ -145,11 +131,6 @@ class ItemAdminService(
         return ImportSummary(summary.inserted, summary.updated, summary.unchanged, summary.skipped + malformed)
     }
 
-    /**
-     * The core import. One transaction: either every row lands or none does, so a half-seeded
-     * items table can never exist. Overwritten base prices get their own BASE_PRICE_SET event;
-     * the run itself is one ADMIN_ACTION.
-     */
     fun importSeeds(
         seeds: Collection<ItemSeed>,
         staffCharacterId: Int,
@@ -177,8 +158,9 @@ class ItemAdminService(
                         ps.setNullableInt(3, seed.buyLimit)
                         ps.setNullableLong(4, seed.highAlch)
                         ps.setNullableLong(5, seed.shopValue)
-                        ps.setBoolean(6, overwrite)
+                        ps.setBoolean(6, seed.taxExempt)
                         ps.setBoolean(7, overwrite)
+                        ps.setBoolean(8, overwrite)
                         val (wasInserted, afterPrice, afterLimit) =
                             ps.executeQuery().use { rs ->
                                 check(rs.next()) { "seed upsert returned no row for ${seed.objId}" }

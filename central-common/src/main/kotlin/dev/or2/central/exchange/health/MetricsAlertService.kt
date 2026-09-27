@@ -7,11 +7,6 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 
-/**
- * Part P2: a periodic one-line summary of what the exchange did, and alerts when settlement
- * latency or the retry rate spikes. Reads the process counters, so it describes this Central
- * instance's own share of the work.
- */
 class MetricsAlertService(
     private val config: () -> ExchangeConfig,
     private val alerts: AlertService,
@@ -32,17 +27,19 @@ class MetricsAlertService(
         if (previous == null || previousAt == null) return 0
 
         val minutes = Duration.between(previousAt, now).toMillis().coerceAtLeast(1) / 60_000.0
-        val created = current.ordersCreated - previous.ordersCreated
-        val cancelled = current.ordersCancelled - previous.ordersCancelled
-        val expired = current.ordersExpired - previous.ordersExpired
         val fills = current.fills - previous.fills
         val retries = current.retries - previous.retries
         val deadlocks = current.deadlocks - previous.deadlocks
         val l = current.latency
-        log.info(
-            "exchange metrics: created={} cancelled={} expired={} fills={} retries={} deadlocks={} match p50={}ms p95={}ms p99={}ms max={}ms",
-            created, cancelled, expired, fills, retries, deadlocks, l.p50, l.p95, l.p99, l.max,
-        )
+        if (cfg.verboseLogging) {
+            log.info(
+                "exchange metrics: created={} cancelled={} expired={} fills={} retries={} deadlocks={} match p50={}ms p95={}ms p99={}ms max={}ms",
+                current.ordersCreated - previous.ordersCreated,
+                current.ordersCancelled - previous.ordersCancelled,
+                current.ordersExpired - previous.ordersExpired,
+                fills, retries, deadlocks, l.p50, l.p95, l.p99, l.max,
+            )
+        }
 
         var raised = 0
         if (l.samples >= 20 && l.p95 > cfg.latencyP95AlertMs) {

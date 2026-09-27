@@ -15,23 +15,6 @@ import javax.sql.DataSource
 import kotlin.math.roundToLong
 import kotlin.random.Random
 
-/**
- * Fabricated launch trades, Part Q2.
- *
- * A brand new exchange has empty charts, which tells a player nothing and makes them reluctant to
- * be the first to offer anything. Seeded trades fill that gap, and everything about them is built
- * so they can never be confused with real trading or leave a mark that outlives them:
- *
- * - they reference no orders and no accounts, which the `exchange_trades` CHECK enforces;
- * - no GP or items move, so conservation is untouched and reconciliation has nothing to check;
- * - they carry `source = SEEDED`, so price discovery weights them weakly and fading, they never
- *   count toward confidence, and public statistics leave them out;
- * - they are the only rows in the table that may be deleted, and purging recomputes the buckets
- *   they touched from the trades that remain.
- *
- * Seeding is refused unless it has been turned on deliberately in config, and every run is an
- * audited staff action.
- */
 class SeedTradeService(
     private val dataSource: DataSource,
     private val config: () -> ExchangeConfig,
@@ -43,7 +26,6 @@ class SeedTradeService(
     class SeedRequest(
         val objId: Int,
         val trades: Int,
-        /** Null uses the item's base price. */
         val centrePrice: Long? = null,
         val maxQuantity: Int? = null,
         val windowHours: Int? = null,
@@ -59,12 +41,6 @@ class SeedTradeService(
             "${if (dryRun) "would purge" else "purged"} $trades seeded trade(s), $quantity units, across ${items.size} item(s)"
     }
 
-    /**
-     * Creates [SeedRequest.trades] fabricated trades for each request, scattered across the seeding
-     * window and around the item's base price. Returns one result per request; a request whose item
-     * has no base price, or which would exceed a cap, is skipped with a reason rather than failing
-     * the batch.
-     */
     fun seed(requests: List<SeedRequest>, staffCharacterId: Int, reason: String, seed: Long = clock.millis()): List<SeedResult> {
         require(reason.isNotBlank()) { "seeding needs a reason" }
         val cfg = config()
@@ -125,7 +101,9 @@ class SeedTradeService(
                     )
                 }
                 conn.commit()
-                log.info("seeded {} trade(s) across {} item(s)", results.sumOf { it.created }, touched.size)
+                if (cfg.ops.verboseLogging) {
+                    log.info("seeded {} trade(s) across {} item(s)", results.sumOf { it.created }, touched.size)
+                }
             } catch (e: Exception) {
                 runCatching { conn.rollback() }
                 throw e
@@ -136,7 +114,6 @@ class SeedTradeService(
         return results
     }
 
-    /** Removes seeded trades for one item, or every item when [objId] is null, and rebuilds their buckets. */
     fun purge(objId: Int?, staffCharacterId: Int, reason: String, dryRun: Boolean): PurgeResult {
         require(reason.isNotBlank()) { "a purge needs a reason" }
         val scope = objId ?: 0
@@ -166,7 +143,9 @@ class SeedTradeService(
                     ),
                 )
                 conn.commit()
-                log.info("purged {} seeded trade(s) across {} item(s)", trades, items.size)
+                if (config().ops.verboseLogging) {
+                    log.info("purged {} seeded trade(s) across {} item(s)", trades, items.size)
+                }
                 PurgeResult(trades, quantity, items, dryRun = false)
             } catch (e: Exception) {
                 runCatching { conn.rollback() }

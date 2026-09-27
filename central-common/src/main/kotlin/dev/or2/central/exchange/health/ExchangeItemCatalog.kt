@@ -14,7 +14,6 @@ import java.net.http.HttpResponse
 import java.time.Duration
 import java.time.Instant
 
-/** Where the exchange reads item facts and icons from. Fluxious' own CDN, so not configurable. */
 object ExchangeEndpoints {
     const val CDN = "https://cdn.fluxious-rsps.com"
 
@@ -25,16 +24,6 @@ object ExchangeEndpoints {
     fun iconFor(objId: Int): String = ITEM_ICON.replace("{id}", objId.toString())
 }
 
-/**
- * Item names for anything the exchange shows to a person.
- *
- * Reads the cache-data document rather than the gamevals one: gamevals only map a symbol to an id,
- * so an alert built from them said "Deathrune" where a player reads "Death rune". This carries the
- * cache's own display name alongside the symbol.
- *
- * Fetched lazily and kept for a day. A failure leaves whatever was already loaded in place and is
- * logged once per attempt; a missing name only costs an alert its label.
- */
 class ExchangeItemCatalog(
     private val url: String = ExchangeEndpoints.ITEMS,
     private val client: HttpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build(),

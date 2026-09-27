@@ -3,6 +3,7 @@ package dev.or2.central.exchange
 import dev.or2.central.exchange.model.CancelReason
 import dev.or2.central.exchange.model.ClaimStatus
 import dev.or2.central.exchange.model.CollectionBox
+import dev.or2.central.exchange.model.CollectionSlot
 import dev.or2.central.exchange.model.CreateOrderRequest
 import dev.or2.central.exchange.model.ExchangeClaim
 import dev.or2.central.exchange.model.ExchangeItem
@@ -23,10 +24,6 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
 
-/**
- * Every statement the exchange runs, one method each, all on a caller-owned connection so the
- * engine can compose them inside a single transaction. No business rules live here.
- */
 class ExchangeRepository {
     private val orderColumns = OpenRuneSql.text("central/exchange/order_columns.sql")
     private val claimColumns = OpenRuneSql.text("central/exchange/claim_columns.sql")
@@ -108,6 +105,7 @@ class ExchangeRepository {
             ps.setNullableInstant(11, request.expiresAt)
             ps.setInstant(12, now)
             ps.setInstant(13, now)
+            ps.setNullableInt(14, request.slot)
             ps.executeQuery().use { rs ->
                 check(rs.next()) { "insert returned no row" }
                 readOrder(rs)
@@ -151,8 +149,6 @@ class ExchangeRepository {
         val name = if (incoming.side == Side.BUY) "order_select_counter_sell" else "order_select_counter_buy"
         return conn.prepareStatement(sql(name)).use { ps ->
             ps.setInt(1, incoming.objId)
-            // Bound twice: once to exclude the character itself, once to exclude every other
-            // character on the same account.
             ps.setInt(2, incoming.characterId)
             ps.setInt(3, incoming.characterId)
             ps.setLong(4, incoming.limitPrice)
@@ -229,6 +225,63 @@ class ExchangeRepository {
             ps.executeQuery().use { rs ->
                 check(rs.next()) { "trade insert returned no row" }
                 rs.getLong(1) to rs.getInstant(2)
+            }
+        }
+
+    fun creditOwed(conn: Connection, orderId: Long, items: Long, gp: Long) {
+        if (items <= 0 && gp <= 0) return
+        conn.prepareStatement(sql("order_credit_owed")).use { ps ->
+            ps.setLong(1, items.coerceAtLeast(0))
+            ps.setLong(2, gp.coerceAtLeast(0))
+            ps.setLong(3, orderId)
+            ps.executeUpdate()
+        }
+    }
+
+    fun debitOwed(conn: Connection, orderId: Long, items: Long, gp: Long): Boolean {
+        if (items <= 0 && gp <= 0) return true
+        return conn.prepareStatement(sql("order_debit_owed")).use { ps ->
+            ps.setLong(1, items.coerceAtLeast(0))
+            ps.setLong(2, gp.coerceAtLeast(0))
+            ps.setLong(3, orderId)
+            ps.setLong(4, items.coerceAtLeast(0))
+            ps.setLong(5, gp.coerceAtLeast(0))
+            ps.executeUpdate() == 1
+        }
+    }
+
+    fun lockOwed(conn: Connection, orderId: Long): Owed? =
+        conn.prepareStatement(sql("order_owed_lock")).use { ps ->
+            ps.setLong(1, orderId)
+            ps.executeQuery().use { rs ->
+                if (!rs.next()) null
+                else Owed(rs.getInt("character_id"), rs.getInt("obj_id"), rs.getLong("owed_items"), rs.getLong("owed_gp"))
+            }
+        }
+
+    class Owed(val characterId: Int, val objId: Int, val items: Long, val gp: Long)
+
+    fun collectionSlots(conn: Connection, characterId: Int): List<CollectionSlot> =
+        conn.prepareStatement(sql("order_select_owed")).use { ps ->
+            ps.setInt(1, characterId)
+            ps.executeQuery().use { rs ->
+                val out = mutableListOf<CollectionSlot>()
+                while (rs.next()) {
+                    out +=
+                        CollectionSlot(
+                            orderId = rs.getLong(1),
+                            objId = rs.getInt(2),
+                            side = Side.valueOf(rs.getString(3)),
+                            quantity = rs.getLong(4),
+                            filledQuantity = rs.getLong(5),
+                            limitPrice = rs.getLong(6),
+                            status = OrderStatus.valueOf(rs.getString(7)),
+                            slot = rs.getInt(8).takeUnless { rs.wasNull() },
+                            owedItems = rs.getLong(9),
+                            owedGp = rs.getLong(10),
+                        )
+                }
+                out
             }
         }
 
@@ -322,6 +375,7 @@ class ExchangeRepository {
         correlationId: UUID,
         world: Int,
         now: Instant,
+        orderId: Long?,
     ): ExchangeClaim =
         conn.prepareStatement(claimSql("claim_insert")).use { ps ->
             ps.setInt(1, characterId)
@@ -332,6 +386,7 @@ class ExchangeRepository {
             ps.setObject(6, correlationId)
             ps.setInt(7, world)
             ps.setInstant(8, now)
+            ps.setNullableLong(9, orderId)
             ps.executeQuery().use { rs ->
                 check(rs.next()) { "claim insert returned no row" }
                 readClaim(rs)
@@ -366,20 +421,24 @@ class ExchangeRepository {
             ps.executeQuery().use { rs -> readIds(rs) }
         }
 
-    fun buyLimitUsed(conn: Connection, characterId: Int, objId: Int, since: Instant): Long =
-        conn.prepareStatement(sql("buy_limit_used")).use { ps ->
+    fun buyLimitUsed(conn: Connection, characterId: Int, objId: Int, now: Instant, windowHours: Int): Long =
+        conn.prepareStatement(sql("buy_limit_window_used")).use { ps ->
             ps.setInt(1, characterId)
             ps.setInt(2, objId)
-            ps.setInstant(3, since)
+            ps.setInt(3, windowHours)
+            ps.setInstant(4, now)
             ps.executeQuery().use { rs -> if (rs.next()) rs.getLong(1) else 0 }
         }
 
-    fun addBuyLimitUsage(conn: Connection, characterId: Int, objId: Int, bucketStart: Instant, filled: Long) {
-        conn.prepareStatement(sql("buy_limit_upsert")).use { ps ->
+    fun addBuyLimitUsage(conn: Connection, characterId: Int, objId: Int, now: Instant, filled: Long, windowHours: Int) {
+        if (filled <= 0) return
+        conn.prepareStatement(sql("buy_limit_window_upsert")).use { ps ->
             ps.setInt(1, characterId)
             ps.setInt(2, objId)
-            ps.setInstant(3, bucketStart)
+            ps.setInstant(3, now)
             ps.setLong(4, filled)
+            ps.setInt(5, windowHours)
+            ps.setInt(6, windowHours)
             ps.executeUpdate()
         }
     }
@@ -490,7 +549,6 @@ class ExchangeRepository {
             }
         }
 
-    /** Filled quantity and GP against the system for one item, side and character (0 = item-wide) since [since]. */
     fun systemUsage(conn: Connection, objId: Int, side: Side, characterId: Int, since: Instant): Pair<Long, Long> =
         conn.prepareStatement(sql("system_usage_sum")).use { ps ->
             ps.setInt(1, objId)
@@ -587,13 +645,15 @@ class ExchangeRepository {
                             createdAt = rs.getInstant(8),
                             taxPaid = rs.getLong(9),
                             averagePrice = rs.getLong(10).takeUnless { rs.wasNull() },
+                            slot = rs.getInt(11).takeUnless { rs.wasNull() },
+                            owedItems = rs.getLong(12),
+                            owedGp = rs.getLong(13),
                         )
                 }
                 out
             }
         }
 
-    /** Adds to the per-character rejection counters and returns the new totals. */
     fun bumpAccountState(conn: Connection, characterId: Int, invalidInputs: Int, rateLimitTrips: Int, now: Instant): Pair<Int, Int> =
         conn.prepareStatement(sql("account_state_bump")).use { ps ->
             ps.setInt(1, characterId)
@@ -686,6 +746,9 @@ class ExchangeRepository {
             world = rs.getInt("world"),
             createdAt = rs.getInstant("created_at"),
             expiresAt = rs.getObject("expires_at", OffsetDateTime::class.java)?.toInstant(),
+            slot = rs.getInt("slot").takeUnless { rs.wasNull() },
+            owedItems = rs.getLong("owed_items"),
+            owedGp = rs.getLong("owed_gp"),
         )
 
     private fun readClaim(rs: ResultSet): ExchangeClaim =
@@ -699,6 +762,7 @@ class ExchangeRepository {
             clientRequestId = rs.getString("client_request_id"),
             correlationId = rs.getObject("correlation_id", UUID::class.java),
             createdAt = rs.getInstant("created_at"),
+            orderId = rs.getLong("order_id").takeUnless { rs.wasNull() },
         )
 
     private fun ResultSet.getInstant(column: String): Instant =

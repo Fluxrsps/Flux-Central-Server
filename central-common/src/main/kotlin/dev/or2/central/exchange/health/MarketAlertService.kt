@@ -11,11 +11,6 @@ import java.time.ZoneOffset
 import javax.sql.DataSource
 import kotlin.math.abs
 
-/**
- * Price, volume and trader alerts, Part H3, per item and for the exchange as a whole. Gated on
- * minimum volume and distinct traders so a two-trade market never pages anyone; de-duplicated by
- * [AlertService].
- */
 class MarketAlertService(
     private val dataSource: DataSource,
     private val config: () -> ExchangeConfig,
@@ -104,7 +99,6 @@ class MarketAlertService(
         return raised
     }
 
-    /** Previous period must be non-zero: going from nothing to something is a launch, not a spike. */
     private fun jumped(previous: Long, current: Long, multiple: Double): Boolean =
         previous > 0 && current.toDouble() / previous >= multiple
 
