@@ -55,8 +55,12 @@ import dev.or2.central.notify.PgNotifyDiscovery
 import dev.or2.central.notify.PgNotifyRegistrar
 import dev.or2.central.notify.PgNotifyService
 import dev.or2.central.notify.handlers.AccountDiscordIdNotifyHandler
+import dev.or2.central.notify.handlers.AccountRightsNotifyHandler
 import dev.or2.central.notify.handlers.CharacterDisplayNameNotifyHandler
+import dev.or2.central.notify.handlers.CharacterDonatorRankNotifyHandler
+import dev.or2.central.notify.handlers.CharacterGameModeNotifyHandler
 import dev.or2.central.notify.handlers.CharacterMuteNotifyHandler
+import dev.or2.central.notify.handlers.PlayerAdminCommandNotifyHandler
 import dev.or2.central.notify.handlers.PunishmentKickNotifyHandler
 import dev.or2.central.notify.handlers.PunishmentNotifyHandler
 import dev.or2.central.notify.handlers.WorldBroadcastNotifyHandler
@@ -335,6 +339,10 @@ object CentralApplication {
             single { WorldListInvalidateHandler(get()) }
             single { CharacterDisplayNameNotifyHandler(get(), get()) }
             single { AccountDiscordIdNotifyHandler(get()) }
+            single { AccountRightsNotifyHandler(get()) }
+            single { CharacterDonatorRankNotifyHandler(get()) }
+            single { CharacterGameModeNotifyHandler(get()) }
+            single { PlayerAdminCommandNotifyHandler(get()) }
             single {
                 val koin = getKoin()
                 PgNotifyService(

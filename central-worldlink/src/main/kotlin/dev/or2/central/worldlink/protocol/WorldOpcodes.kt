@@ -68,6 +68,12 @@ object WorldOpcodes {
     const val OP_WORLD_LAYOUT_DATA: Int = 119
     const val OP_WORLD_LAYOUT_LIST_OK: Int = 120
 
+    /** Fluxious admin panel: live pushes for actions with no existing opcode. */
+    const val OP_SERVER_RIGHTS_UPDATE: Int = 121
+    const val OP_SERVER_DONATOR_UPDATE: Int = 122
+    const val OP_SERVER_GAMEMODE_UPDATE: Int = 123
+    const val OP_SERVER_TELEPORT_HOME: Int = 124
+
     const val LAYOUT_FAIL_NOT_ALLOWED: Int = 1
     const val LAYOUT_FAIL_BAD_SLOT: Int = 2
     const val LAYOUT_FAIL_UNKNOWN_CHARACTER: Int = 3
@@ -75,9 +81,9 @@ object WorldOpcodes {
     const val LAYOUT_FAIL_NOT_SHARED: Int = 5
     const val LAYOUT_FAIL_STORAGE: Int = 6
 
-    const val PROTOCOL_VERSION: Int = 8
+    const val PROTOCOL_VERSION: Int = 9
     const val MIN_CLIENT_PROTOCOL_VERSION: Int = 2
-    const val MAX_CLIENT_PROTOCOL_VERSION: Int = 8
+    const val MAX_CLIENT_PROTOCOL_VERSION: Int = 9
 
     const val LOGIN_OK_RIGHTS_MAX_BYTES: Int = 4096
     const val LOGIN_FAIL_SCRIPT_LINE_MAX_UTF8_BYTES: Int = 512

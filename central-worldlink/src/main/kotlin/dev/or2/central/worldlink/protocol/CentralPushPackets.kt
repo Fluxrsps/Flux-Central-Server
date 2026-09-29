@@ -27,6 +27,14 @@ object CentralPushPackets {
         val discordId: String,
     )
 
+    data class RightsUpdate(val accountId: Long, val rights: String)
+
+    data class DonatorUpdate(val accountId: Long, val characterId: Int, val donatorRank: String)
+
+    data class GamemodeUpdate(val accountId: Long, val characterId: Int, val gameMode: String)
+
+    data class TeleportHome(val accountId: Long, val characterId: Int)
+
     data class ExchangeNotify(
         val characterId: Int,
         val notificationId: Long,
@@ -61,6 +69,26 @@ object CentralPushPackets {
     fun decodeMuteUpdate(frame: ByteArray): MuteUpdate =
         readBody(frame).use { r ->
             MuteUpdate(r.readLong(), r.readInt(), r.readLong())
+        }
+
+    fun decodeRightsUpdate(frame: ByteArray): RightsUpdate =
+        readBody(frame).use { r ->
+            RightsUpdate(r.readLong(), r.readUtf8LenPrefixed())
+        }
+
+    fun decodeDonatorUpdate(frame: ByteArray): DonatorUpdate =
+        readBody(frame).use { r ->
+            DonatorUpdate(r.readLong(), r.readInt(), r.readUtf8LenPrefixed())
+        }
+
+    fun decodeGamemodeUpdate(frame: ByteArray): GamemodeUpdate =
+        readBody(frame).use { r ->
+            GamemodeUpdate(r.readLong(), r.readInt(), r.readUtf8LenPrefixed())
+        }
+
+    fun decodeTeleportHome(frame: ByteArray): TeleportHome =
+        readBody(frame).use { r ->
+            TeleportHome(r.readLong(), r.readInt())
         }
 
     fun decodeReboot(frame: ByteArray): Reboot =
