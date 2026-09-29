@@ -5,7 +5,7 @@ INSERT INTO realms (
 )
 VALUES (
     255, 'development', 'Development realm', ?, NULL,
-    '0_19_36_38_15', '0_19_36_38_15',
+    '0_19_36_40_14', '0_19_36_40_14',
     1, 0, 1,
     15000, 100
 )
