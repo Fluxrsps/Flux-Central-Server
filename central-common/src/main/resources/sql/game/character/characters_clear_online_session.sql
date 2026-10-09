@@ -1,3 +1,3 @@
-UPDATE account_characters
+UPDATE character_progress
 SET online_central_world_id = NULL, online_session_heartbeat = NULL
-WHERE id = ?
+WHERE character_id = ?

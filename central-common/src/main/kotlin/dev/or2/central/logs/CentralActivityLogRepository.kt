@@ -88,7 +88,8 @@ class CentralActivityLogRepository(
         }
     }
 
-    fun insert(log: CentralActivityLog): UUID {
+    /** [worldType] is the gameplay mode the row belongs to; one world may serve several. */
+    fun insert(log: CentralActivityLog, worldType: String? = null): UUID {
         val sql = OpenRuneSql.text("central/logs/insert.sql")
         val payload =
             PGobject().apply {
@@ -107,7 +108,8 @@ class CentralActivityLogRepository(
                         ps.setLong(3, log.accountId)
                         ps.setInt(4, log.characterId)
                         ps.setInt(5, log.worldId)
-                        ps.setObject(6, payload)
+                        ps.setString(6, worldType)
+                        ps.setObject(7, payload)
                         ps.executeQuery().use { rs ->
                             require(rs.next()) { "INSERT ... RETURNING produced no row" }
                             rs.getLong("id") to
